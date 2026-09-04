@@ -1,0 +1,203 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------- palettes
+   Every palette defines the same token set for dark and light so the whole UI
+   (cards, status colours, charts) stays consistent when the user switches. */
+:root {
+  --c-bg: 8 9 12;
+  --c-surface: 18 20 26;
+  --c-surface-2: 26 29 37;
+  --c-line: 44 48 58;
+  --c-gold: 212 175 55;
+  --c-gold-soft: 122 100 30;
+  --c-ink: 245 246 250;
+  --c-muted: 154 160 175;
+  --c-ok: 46 190 120;
+  --c-bad: 239 79 79;
+  --c-info: 74 144 226;
+  --c-warn: 240 160 40;
+  --c-lock: 168 118 232;
+  --font-ui: 'Cairo', 'Inter', system-ui, sans-serif;
+  --font-num: 'Inter', ui-monospace, 'SFMono-Regular', monospace;
+  color-scheme: dark;
+}
+
+[data-palette='navy_gold'] {
+  --c-bg: 8 14 30;
+  --c-surface: 16 26 50;
+  --c-surface-2: 24 38 68;
+  --c-line: 40 58 96;
+  --c-gold: 224 188 74;
+  --c-gold-soft: 116 96 34;
+}
+[data-palette='emerald'] {
+  --c-bg: 6 18 15;
+  --c-surface: 12 30 25;
+  --c-surface-2: 18 42 35;
+  --c-line: 32 64 54;
+  --c-gold: 212 186 92;
+  --c-gold-soft: 96 92 40;
+  --c-ok: 60 200 140;
+}
+[data-palette='burgundy'] {
+  --c-bg: 22 8 14;
+  --c-surface: 38 14 24;
+  --c-surface-2: 52 20 33;
+  --c-line: 78 34 50;
+  --c-gold: 222 178 96;
+  --c-gold-soft: 110 78 40;
+}
+[data-palette='high_contrast'] {
+  --c-bg: 0 0 0;
+  --c-surface: 12 12 12;
+  --c-surface-2: 24 24 24;
+  --c-line: 90 90 90;
+  --c-gold: 255 214 64;
+  --c-ink: 255 255 255;
+  --c-muted: 210 210 210;
+  --c-ok: 60 230 140;
+  --c-bad: 255 90 90;
+  --c-info: 110 180 255;
+}
+
+html.light {
+  --c-bg: 246 247 250;
+  --c-surface: 255 255 255;
+  --c-surface-2: 242 244 249;
+  --c-line: 220 224 233;
+  --c-gold: 176 137 24;
+  --c-gold-soft: 226 208 150;
+  --c-ink: 20 22 28;
+  --c-muted: 100 108 124;
+  --c-ok: 22 150 92;
+  --c-bad: 200 40 40;
+  --c-info: 36 105 190;
+  --c-warn: 190 120 10;
+  --c-lock: 124 70 200;
+  color-scheme: light;
+}
+html.light[data-palette='navy_gold'] {
+  --c-bg: 240 244 252;
+  --c-surface: 255 255 255;
+  --c-surface-2: 234 240 251;
+  --c-line: 208 219 238;
+}
+html.light[data-palette='white_gold'] {
+  --c-bg: 250 249 244;
+  --c-surface: 255 255 255;
+  --c-surface-2: 247 244 234;
+  --c-line: 228 222 205;
+  --c-gold: 168 130 22;
+}
+html.light[data-palette='emerald'] {
+  --c-bg: 240 249 245;
+  --c-surface: 255 255 255;
+  --c-surface-2: 232 246 239;
+  --c-line: 206 231 219;
+}
+html.light[data-palette='burgundy'] {
+  --c-bg: 252 243 245;
+  --c-surface: 255 255 255;
+  --c-surface-2: 250 236 240;
+  --c-line: 233 208 216;
+}
+html.light[data-palette='high_contrast'] {
+  --c-bg: 255 255 255;
+  --c-surface: 255 255 255;
+  --c-surface-2: 240 240 240;
+  --c-line: 60 60 60;
+  --c-ink: 0 0 0;
+  --c-muted: 60 60 60;
+  --c-gold: 140 100 0;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: rgb(var(--c-bg));
+    color: rgb(var(--c-ink));
+    font-family: var(--font-ui);
+    overscroll-behavior-y: none;
+  }
+  /* Latin numerals read better for money, in both languages. */
+  .num,
+  input[inputmode='decimal'],
+  input[inputmode='numeric'] {
+    font-family: var(--font-num);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+  }
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  ::selection {
+    background: rgb(var(--c-gold) / 0.3);
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-line bg-surface shadow-card;
+  }
+  .card-pad {
+    @apply p-4;
+  }
+  .label {
+    @apply block text-[12px] font-semibold uppercase tracking-wide text-muted;
+  }
+  .input {
+    @apply w-full rounded-xl border border-line bg-surface2 px-3 py-3 text-[16px] text-ink outline-none transition
+           placeholder:text-muted/60 focus:border-gold focus:ring-2 focus:ring-gold/25;
+  }
+  .btn {
+    @apply inline-flex min-h-[46px] items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold
+           transition active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-gold text-black shadow-card hover:brightness-110;
+  }
+  .btn-ghost {
+    @apply btn border border-line bg-surface2 text-ink hover:border-gold/60;
+  }
+  .btn-quiet {
+    @apply btn text-muted hover:text-ink;
+  }
+  .btn-danger {
+    @apply btn border border-bad/40 bg-bad/10 text-bad hover:bg-bad/20;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[12px] font-semibold;
+  }
+  .row {
+    @apply flex items-center justify-between gap-3 border-b border-line/70 py-2.5 last:border-0;
+  }
+  .safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+.skeleton {
+  @apply animate-pulse rounded-xl bg-surface2;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; color: #000; }
+  .card { border: 1px solid #ccc; box-shadow: none; }
+}
