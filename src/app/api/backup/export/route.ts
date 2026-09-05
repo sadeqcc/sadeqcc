@@ -1,50 +1,61 @@
-import { NextResponse } from 'next/server';
-import { ok, requireCtx } from '@/lib/api';
+import { isDenied, requireCtx } from '@/lib/api';
 import { getDb } from '@/lib/db';
-import { nowIso } from '@/lib/date';
+import { dubaiDate, nowIso } from '@/lib/date';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-const TABLES = [
-  'daily_reconciliations',
-  'cash_entries',
-  'cash_adjustments',
-  'gold_reconciliations',
-  'gold_movements',
-  'gold_holdings',
-  'third_party_gold',
-  'people',
-  'locations',
-  'attachments',
-  'audit_logs',
+/** Tables are exported in dependency order so a restore can replay them as-is. */
+export const BACKUP_TABLES = [
   'app_settings',
-];
+  'customers',
+  'customer_ledger',
+  'makers',
+  'travelers',
+  'traveler_shipments',
+  'orders',
+  'order_status_history',
+  'payments',
+  'gold_exchanges',
+  'order_notes',
+  'order_media',
+  'follow_ups',
+  'tags',
+  'order_counters',
+  'audit_logs',
+] as const;
 
-export const BACKUP_FORMAT = 'sadeq-drawer-backup/1';
+export async function GET(req: Request) {
+  const g = await requireCtx('backup.manage');
+  if (isDenied(g)) return g.response;
 
-/** Full owner-scoped backup. Includes soft-deleted rows so a restore is faithful. */
-export async function GET(req: Request): Promise<NextResponse> {
-  const g = await requireCtx();
-  if ('response' in g) return g.response;
+  const withMedia = new URL(req.url).searchParams.get('media') !== '0';
   const db = await getDb();
-  const url = new URL(req.url);
-  const skipAttachments = url.searchParams.get('light') === '1';
+  const tables: Record<string, unknown[]> = {};
 
-  const data: Record<string, unknown[]> = {};
-  for (const t of TABLES) {
-    if (t === 'attachments' && skipAttachments) {
-      data[t] = [];
+  for (const table of BACKUP_TABLES) {
+    if (table === 'order_media' && !withMedia) {
+      tables[table] = await db.all(
+        `SELECT id, ownerId, orderId, name, mime, size, kind, category, thumb, status, createdAt, updatedAt, createdBy, deletedAt
+           FROM order_media WHERE ownerId = ?`,
+        [g.ctx.ownerId],
+      );
       continue;
     }
-    data[t] = await db.all(`SELECT * FROM ${t} WHERE ownerId = ?`, [g.ctx.ownerId]);
+    tables[table] = await db.all(`SELECT * FROM ${table} WHERE ownerId = ?`, [g.ctx.ownerId]);
   }
+
   const payload = {
-    format: BACKUP_FORMAT,
+    app: 'gold-orders' as const,
+    version: 1,
     exportedAt: nowIso(),
-    ownerId: g.ctx.ownerId,
-    counts: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.length])),
-    data,
+    exportedBy: g.ctx.actor,
+    includesMedia: withMedia,
+    tables,
   };
-  return ok(payload);
+
+  return new Response(JSON.stringify(payload), {
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="gold-orders-backup-${dubaiDate()}.json"`,
+      'Cache-Control': 'no-store',
+    },
+  });
 }

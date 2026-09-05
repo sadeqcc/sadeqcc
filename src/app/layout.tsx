@@ -4,30 +4,34 @@ import { AppProvider } from '@/components/providers';
 import { AppShell } from '@/components/shell';
 
 export const metadata: Metadata = {
-  title: 'SADEQ DRAWER — Cash & Gold Reconciliation',
-  description: 'مطابقة يومية للكاش والذهب في محل الذهب — Daily cash and gold drawer reconciliation.',
+  title: 'GOLD ORDERS · طلبات الذهب',
+  description:
+    'متابعة طلبات الذهب من الكاونتر حتى تسليم العميل — الصنّاع والمسافرون والدفعات والتسليم. ' +
+    'Track every gold jewellery order from the counter to the customer.',
   manifest: '/manifest.webmanifest',
-  applicationName: 'SADEQ DRAWER',
-  appleWebApp: { capable: true, title: 'SADEQ DRAWER', statusBarStyle: 'black-translucent' },
-  icons: { icon: '/icons/icon-192.png', apple: '/icons/icon-192.png' },
+  applicationName: 'GOLD ORDERS',
+  appleWebApp: { capable: true, title: 'GOLD ORDERS', statusBarStyle: 'black-translucent' },
+  icons: { icon: '/icons/icon-192.png', apple: '/icons/apple-touch-icon.png' },
   formatDetection: { telephone: false },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#08090c',
+  themeColor: '#0a0a0c',
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
 };
 
-/** Applies the stored theme before paint so there is no flash and no hydration mismatch. */
-const THEME_BOOT = `(function(){try{
-var s=JSON.parse(localStorage.getItem('sadeq.settings.v1')||'{}');
+/** Applies the stored theme and language before paint — no flash, no mismatch. */
+const BOOT = `(function(){try{
+var s=JSON.parse(localStorage.getItem('go.settings.v1')||'{}');
+var t=s.theme||'dark';
+if(t==='system'){t=window.matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';}
 var d=document.documentElement;
-d.lang=s.language||'ar';d.dir=(s.language==='en')?'ltr':'rtl';
-d.classList.add(s.theme==='light'?'light':'dark');
-d.dataset.palette=s.palette||'black_gold';
+d.classList.add(t==='light'?'light':'dark');
+var l=s.language||'ar';
+d.lang=l; d.dir=(l==='ar')?'rtl':'ltr';
 }catch(e){document.documentElement.classList.add('dark');}})();`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -38,9 +42,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap"
         />
-        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+        <script dangerouslySetInnerHTML={{ __html: BOOT }} />
       </head>
       <body className="min-h-dvh antialiased">
         <AppProvider>

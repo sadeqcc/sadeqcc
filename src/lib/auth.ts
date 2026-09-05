@@ -3,8 +3,9 @@ import crypto from 'node:crypto';
 import { cookies } from 'next/headers';
 import { getDb } from './db';
 import { nowIso } from './date';
+import type { Role } from './types';
 
-const COOKIE = 'sadeq_session';
+const COOKIE = 'gold_orders_session';
 const SESSION_DAYS = 30;
 
 function secret(): string {
@@ -35,6 +36,7 @@ export interface SessionPayload {
   uid: string;
   ownerId: string;
   username: string;
+  role: Role;
   exp: number;
 }
 
@@ -82,7 +84,12 @@ export async function clearSession(): Promise<void> {
 
 export async function getSession(): Promise<SessionPayload | null> {
   const jar = await cookies();
-  return readToken(jar.get(COOKIE)?.value);
+  const s = readToken(jar.get(COOKIE)?.value);
+  if (!s) return null;
+  // The role travels in the cookie for speed, but the database decides.
+  const u = await getUserById(s.uid);
+  if (!u || u.status !== 'active') return null;
+  return { ...s, role: u.role as Role, ownerId: u.ownerId };
 }
 
 export interface UserRow {
@@ -93,6 +100,8 @@ export interface UserRow {
   passwordHash: string;
   pinHash: string | null;
   role: string;
+  status: string;
+  createdAt: string;
 }
 
 export async function findUser(username: string): Promise<UserRow | null> {
@@ -113,23 +122,47 @@ export async function countUsers(): Promise<number> {
   return Number(r?.n ?? 0);
 }
 
-export async function createUser(username: string, password: string, displayName: string): Promise<UserRow> {
+export async function listUsers(ownerId: string): Promise<UserRow[]> {
+  const db = await getDb();
+  return db.all<UserRow>('SELECT * FROM users WHERE ownerId = ? AND deletedAt IS NULL ORDER BY createdAt ASC', [ownerId]);
+}
+
+/** The first account created owns the shop; later accounts are staff under it. */
+export async function createUser(opts: {
+  username: string;
+  password: string;
+  displayName: string;
+  role?: Role;
+  ownerId?: string;
+  createdBy?: string;
+}): Promise<UserRow> {
   const db = await getDb();
   const id = crypto.randomUUID();
   const t = nowIso();
+  const role = opts.role ?? 'owner';
   await db.run(
     `INSERT INTO users (id, ownerId, username, displayName, passwordHash, pinHash, role, status, createdAt, updatedAt, createdBy)
-     VALUES (?,?,?,?,?,NULL,'owner','active',?,?,?)`,
-    [id, id, username.trim().toLowerCase(), displayName || username, hashPassword(password), t, t, id],
+     VALUES (?,?,?,?,?,NULL,?,'active',?,?,?)`,
+    [
+      id,
+      opts.ownerId ?? id,
+      opts.username.trim().toLowerCase(),
+      opts.displayName || opts.username,
+      hashPassword(opts.password),
+      role,
+      t,
+      t,
+      opts.createdBy ?? id,
+    ],
   );
   return (await getUserById(id))!;
 }
 
-/** Verifies the app PIN for sensitive actions (editing a finalized day, restore, delete). */
+/** Verifies the app PIN before a sensitive action (deleting a payment, restore). */
 export async function verifyPin(userId: string, pin: string): Promise<boolean> {
   const u = await getUserById(userId);
   if (!u) return false;
-  if (!u.pinHash) return true; // PIN not configured yet
+  if (!u.pinHash) return true; // no PIN configured yet
   return verifyPassword(pin, u.pinHash);
 }
 

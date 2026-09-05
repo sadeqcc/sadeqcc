@@ -2,9 +2,10 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Undo2, XCircle } from 'lucide-react';
-import { DEFAULT_SETTINGS, type AppSettings } from '@/lib/types';
-import { dict, t as translate, type DictKey, type Lang } from '@/i18n/dict';
+import { DEFAULT_SETTINGS, type AppSettings, type Permission, type SettingsPatch } from '@/lib/types';
+import { dirOf, translate, type DictKey, type Lang } from '@/i18n/dict';
 import { apiGet, apiWrite, flushOutbox, onOutboxChange, outbox } from '@/lib/client';
+import { formatMoney, formatWeight } from '@/lib/num';
 import { Modal } from './ui';
 
 interface Toast {
@@ -23,19 +24,36 @@ interface ConfirmOptions {
   requireReason?: boolean;
 }
 
+export interface SessionUser {
+  id: string;
+  username: string;
+  displayName: string | null;
+  role: string;
+  hasPin: boolean;
+  permissions: Permission[];
+}
+
 interface AppCtx {
   settings: AppSettings;
-  setSettings: (patch: Partial<AppSettings>) => Promise<void>;
   lang: Lang;
   dir: 'rtl' | 'ltr';
+  /** `t('days_late', { n: 3 })` — the whole UI reads through this. */
   t: (key: DictKey, vars?: Record<string, string | number>) => string;
-  user: { id: string; username: string; displayName: string | null; hasPin: boolean } | null;
-  setUser: (u: AppCtx['user']) => void;
+  setSettings: (patch: SettingsPatch) => Promise<void>;
+  user: SessionUser | null;
+  setUser: (u: SessionUser | null) => void;
+  needsSetup: boolean;
+  authReady: boolean;
+  can: (p: Permission) => boolean;
   online: boolean;
   pending: number;
+  /** Formats using the shop's currency and weight precision. */
+  money: (fils: number) => string;
+  grams: (mg: number) => string;
   toast: (text: string, kind?: Toast['kind'], undo?: () => void) => void;
   confirm: (o: ConfirmOptions) => Promise<{ ok: boolean; pin?: string; reason?: string }>;
   refreshAuth: () => Promise<void>;
+  syncNow: () => Promise<void>;
 }
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -46,11 +64,13 @@ export function useApp(): AppCtx {
   return c;
 }
 
-const LOCAL_SETTINGS = 'sadeq.settings.v1';
+const LOCAL_SETTINGS = 'go.settings.v1';
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettingsState] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [user, setUser] = useState<AppCtx['user']>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [online, setOnline] = useState(true);
   const [pending, setPending] = useState(0);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -59,9 +79,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   >(null);
   const [pinValue, setPinValue] = useState('');
   const [reasonValue, setReasonValue] = useState('');
-
-  const lang = settings.language;
-  const dir = lang === 'ar' ? 'rtl' : 'ltr';
 
   /* ---------------------------------------------------------- boot */
   useEffect(() => {
@@ -77,15 +94,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const refreshAuth = useCallback(async () => {
     try {
-      const me = await apiGet<{ user: AppCtx['user'] }>('/api/auth/me');
+      const me = await apiGet<{ user: SessionUser | null; needsSetup: boolean }>('/api/auth/me');
       setUser(me.user);
+      setNeedsSetup(me.needsSetup);
       if (me.user) {
         const s = await apiGet<{ settings: AppSettings }>('/api/settings');
         setSettingsState(s.settings);
-        localStorage.setItem(LOCAL_SETTINGS, JSON.stringify(s.settings));
+        try {
+          localStorage.setItem(LOCAL_SETTINGS, JSON.stringify(s.settings));
+        } catch {
+          /* ignore */
+        }
       }
     } catch {
-      /* offline: keep the cached settings */
+      /* offline: keep the cached settings and last known user */
+    } finally {
+      setAuthReady(true);
     }
   }, []);
 
@@ -93,41 +117,70 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     void refreshAuth();
   }, [refreshAuth]);
 
-  /* -------------------------------------------------- theme + dir */
+  const lang = settings.language;
+  const dir = dirOf(lang);
+  const t = useCallback(
+    (key: DictKey, vars?: Record<string, string | number>) => translate(lang, key, vars),
+    [lang],
+  );
+
+  /* --------------------------------------------- language + direction */
   useEffect(() => {
-    const html = document.documentElement;
-    html.lang = lang;
-    html.dir = dir;
-    html.classList.toggle('light', settings.theme === 'light');
-    html.classList.toggle('dark', settings.theme !== 'light');
-    html.dataset.palette = settings.palette;
-  }, [lang, dir, settings.theme, settings.palette]);
+    document.documentElement.lang = lang;
+    document.documentElement.dir = dir;
+  }, [lang, dir]);
+
+  /* ---------------------------------------------------- theme */
+  useEffect(() => {
+    const apply = () => {
+      const wantLight =
+        settings.theme === 'light' ||
+        (settings.theme === 'system' && window.matchMedia('(prefers-color-scheme: light)').matches);
+      document.documentElement.classList.toggle('light', wantLight);
+      document.documentElement.classList.toggle('dark', !wantLight);
+    };
+    apply();
+    if (settings.theme !== 'system') return;
+    const mq = window.matchMedia('(prefers-color-scheme: light)');
+    mq.addEventListener('change', apply);
+    return () => mq.removeEventListener('change', apply);
+  }, [settings.theme]);
 
   /* ------------------------------------------------ offline sync */
+  const pushToast = useCallback((text: string, kind: Toast['kind'] = 'ok', undo?: () => void) => {
+    const id = Math.random().toString(36).slice(2);
+    setToasts((list) => [...list.slice(-2), { id, kind, text, undo }]);
+    setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), undo ? 5200 : 2800);
+  }, []);
+
+  const syncNow = useCallback(async () => {
+    const r = await flushOutbox();
+    setPending(outbox.size());
+    if (r.sent > 0) pushToast(translate(lang, 'synced_n', { n: r.sent }), 'ok');
+    if (r.failed > 0) pushToast(translate(lang, 'rejected_n', { n: r.failed }), 'error');
+  }, [pushToast, lang]);
+
   useEffect(() => {
-    const sync = async () => {
+    const goOnline = async () => {
       setOnline(true);
-      const r = await flushOutbox();
-      setPending(outbox.size());
-      if (r.sent > 0) pushToast(translate(lang, 'online_synced'), 'ok');
+      await syncNow();
     };
-    const off = () => setOnline(false);
-    window.addEventListener('online', sync);
-    window.addEventListener('offline', off);
+    const goOffline = () => setOnline(false);
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
     const unsub = onOutboxChange(() => setPending(outbox.size()));
-    if (navigator.onLine && outbox.size() > 0) void sync();
+    if (navigator.onLine && outbox.size() > 0) void syncNow();
     return () => {
-      window.removeEventListener('online', sync);
-      window.removeEventListener('offline', off);
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
       unsub();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lang]);
+  }, [syncNow]);
 
   /* --------------------------------------------------------- api */
-  const setSettings = useCallback(async (patch: Partial<AppSettings>) => {
+  const setSettings = useCallback(async (patch: SettingsPatch) => {
     setSettingsState((s) => {
-      const next = { ...s, ...patch };
+      const next: AppSettings = { ...s, ...patch, notifications: { ...s.notifications, ...(patch.notifications ?? {}) } };
       try {
         localStorage.setItem(LOCAL_SETTINGS, JSON.stringify(next));
       } catch {
@@ -135,16 +188,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       }
       return next;
     });
-    await apiWrite('/api/settings', patch);
-  }, []);
-
-  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-  const pushToast = useCallback((text: string, kind: Toast['kind'] = 'ok', undo?: () => void) => {
-    const id = Math.random().toString(36).slice(2);
-    setToasts((list) => [...list.slice(-2), { id, kind, text, undo }]);
-    timers.current[id] = setTimeout(() => {
-      setToasts((list) => list.filter((x) => x.id !== id));
-    }, undo ? 5000 : 2600);
+    await apiWrite('/api/settings', patch, 'PATCH', { label: 'Settings' });
   }, []);
 
   const confirm = useCallback((o: ConfirmOptions) => {
@@ -155,33 +199,40 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const permissions = useRef<Permission[]>([]);
+  permissions.current = user?.permissions ?? [];
+
   const value = useMemo<AppCtx>(
     () => ({
       settings,
       setSettings,
       lang,
       dir,
-      t: (key, vars) => translate(lang, key, vars),
+      t,
       user,
       setUser,
+      needsSetup,
+      authReady,
+      can: (p) => permissions.current.includes(p),
       online,
       pending,
+      money: (fils: number) => `${settings.currency} ${formatMoney(fils)}`,
+      grams: (mg: number) => `${formatWeight(mg)} g`,
       toast: pushToast,
       confirm,
       refreshAuth,
+      syncNow,
     }),
-    [settings, setSettings, lang, dir, user, online, pending, pushToast, confirm, refreshAuth],
+    [settings, setSettings, lang, dir, t, user, needsSetup, authReady, online, pending, pushToast, confirm, refreshAuth, syncNow],
   );
 
-  const tt = (k: DictKey) => translate(lang, k);
   const canConfirm =
-    (!confirmState?.requirePin || pinValue.length >= 3) && (!confirmState?.requireReason || reasonValue.trim().length >= 3);
+    (!confirmState?.requirePin || pinValue.length >= 4) && (!confirmState?.requireReason || reasonValue.trim().length >= 3);
 
   return (
     <Ctx.Provider value={value}>
       {children}
 
-      {/* toasts */}
       <div className="pointer-events-none fixed inset-x-0 bottom-24 z-[60] flex flex-col items-center gap-2 px-4 no-print">
         {toasts.map((x) => (
           <div
@@ -199,6 +250,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             <span className="flex-1 text-[13px] text-ink">{x.text}</span>
             {x.undo ? (
               <button
+                type="button"
                 className="flex items-center gap-1 rounded-lg px-2 py-1 text-[12px] font-bold text-gold"
                 onClick={() => {
                   x.undo?.();
@@ -206,14 +258,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 }}
               >
                 <Undo2 className="h-3.5 w-3.5" />
-                {tt('undo')}
+                {t('undo')}
               </button>
             ) : null}
           </div>
         ))}
       </div>
 
-      {/* confirmation dialog (never window.confirm) */}
+      {/* Confirmation always runs through this dialog, never window.confirm. */}
       <Modal
         open={!!confirmState}
         title={confirmState?.title ?? ''}
@@ -224,15 +276,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         footer={
           <>
             <button
+              type="button"
               className="btn-ghost flex-1"
               onClick={() => {
                 confirmState?.resolve({ ok: false });
                 setConfirmState(null);
               }}
             >
-              {tt('cancel')}
+              {t('cancel')}
             </button>
             <button
+              type="button"
               className={confirmState?.danger ? 'btn-danger flex-1' : 'btn-primary flex-1'}
               disabled={!canConfirm}
               onClick={() => {
@@ -240,7 +294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 setConfirmState(null);
               }}
             >
-              {confirmState?.confirmLabel ?? tt('confirm')}
+              {confirmState?.confirmLabel ?? t('confirm')}
             </button>
           </>
         }
@@ -253,7 +307,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ) : null}
         {confirmState?.requirePin ? (
           <label className="block">
-            <span className="label mb-1.5">{tt('enter_pin')}</span>
+            <span className="label mb-1.5">{t('enter_pin')}</span>
             <input
               className="input num"
               inputMode="numeric"
@@ -266,7 +320,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ) : null}
         {confirmState?.requireReason ? (
           <label className="block">
-            <span className="label mb-1.5">{tt('edit_reason')}</span>
+            <span className="label mb-1.5">{t('edit_reason')}</span>
             <textarea className="input min-h-[80px]" value={reasonValue} onChange={(e) => setReasonValue(e.target.value)} />
           </label>
         ) : null}
@@ -274,5 +328,3 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     </Ctx.Provider>
   );
 }
-
-export const langKeys = Object.keys(dict) as Lang[];

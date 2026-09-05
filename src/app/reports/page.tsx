@@ -1,424 +1,207 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { BarChart3, CalendarDays, Download, FileText, Printer, Search } from 'lucide-react';
-import { Card, CardTitle, EmptyState, Modal, Segmented, Select, Skeleton, TextInput } from '@/components/ui';
-import { CashDiff, KeyValue, StatusPill, statusTone, setActiveDate } from '@/components/bits';
-import { DiffChart, MonthCalendar } from '@/components/calendar';
+import { useCallback, useEffect, useState } from 'react';
+import { Download } from 'lucide-react';
 import { useApp } from '@/components/providers';
-import { apiGet, download, toCsv } from '@/lib/client';
-import { aed, formatCash, formatGold, grams } from '@/lib/num';
-import { dubaiDate, dubaiStamp, shiftMonth } from '@/lib/date';
-import type { DayDigest, MonthStats } from '@/lib/history';
-import type { AppSettings, CashEntry, GoldMovement } from '@/lib/types';
-import type { DayPayload } from '@/lib/useDay';
+import { StatCard } from '@/components/bits';
+import { Card, CardTitle, DateInput, EmptyState, ErrorState, Segmented, Skeleton, Toggle } from '@/components/ui';
+import { apiGet } from '@/lib/client';
+import { presetRange } from '@/lib/date';
+import { formatMoney, formatWeight } from '@/lib/num';
+import type { ReportBucket, ReportResult } from '@/lib/insights';
 import type { DictKey } from '@/i18n/dict';
 
-interface HistoryResponse {
-  start: string;
-  end: string;
-  days: DayDigest[];
-  stats: MonthStats;
-  settings: AppSettings;
-  outstanding: GoldMovement[];
-}
+type Preset = 'today' | 'week' | 'month' | 'year' | 'custom';
 
-type Tab = 'calendar' | 'analytics' | 'reports';
+const EXPORTS = [
+  { key: 'orders', label: 'export_orders' },
+  { key: 'payments', label: 'export_payments' },
+  { key: 'customers', label: 'export_customers' },
+  { key: 'statement', label: 'export_statement' },
+  { key: 'makers', label: 'export_makers' },
+  { key: 'travelers', label: 'export_travelers' },
+] as const satisfies readonly { key: string; label: DictKey }[];
 
 export default function ReportsPage() {
-  const { t, lang } = useApp();
-  const router = useRouter();
-  const [tab, setTab] = useState<Tab>('calendar');
-  const [month, setMonth] = useState(dubaiDate().slice(0, 7));
-  const [data, setData] = useState<HistoryResponse | null>(null);
-  const [prev, setPrev] = useState<HistoryResponse | null>(null);
+  const { settings, can, t } = useApp();
+  const [preset, setPreset] = useState<Preset>('month');
+  const [range, setRange] = useState(() => presetRange('month'));
+  const [includeCancelled, setIncludeCancelled] = useState(false);
+  const [data, setData] = useState<ReportResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [detail, setDetail] = useState<DayPayload | null>(null);
-  const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [error, setError] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [cur, before] = await Promise.all([
-        apiGet<HistoryResponse>(`/api/history?month=${month}`),
-        apiGet<HistoryResponse>(`/api/history?month=${shiftMonth(month, -1)}`),
-      ]);
-      setData(cur);
-      setPrev(before);
+      const p = new URLSearchParams({ start: range.start, end: range.end });
+      if (includeCancelled) p.set('includeCancelled', '1');
+      setData(await apiGet<ReportResult>(`/api/reports?${p.toString()}`));
+      setError(false);
     } catch {
-      setData(null);
+      setError(true);
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [range, includeCancelled]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!selected) {
-      setDetail(null);
-      return;
-    }
-    apiGet<DayPayload>(`/api/day?date=${selected}`).then(setDetail).catch(() => setDetail(null));
-  }, [selected]);
-
-  const filtered = useMemo(() => {
-    const rows = data?.days ?? [];
-    return rows.filter((d) => {
-      if (statusFilter !== 'all' && d.status !== statusFilter) return false;
-      if (!query.trim()) return true;
-      const q = query.trim().toLowerCase();
-      return (
-        d.date.includes(q) ||
-        (d.employeeName ?? '').toLowerCase().includes(q) ||
-        (d.reasonText ?? '').toLowerCase().includes(q)
-      );
-    });
-  }, [data, query, statusFilter]);
-
-  const stats = data?.stats;
-
-  const exportCsv = (name: string, rows: (string | number)[][]) => {
-    download(`sadeq-${name}-${month}.csv`, toCsv(rows), 'text/csv');
+  const choosePreset = (p: Preset) => {
+    setPreset(p);
+    if (p !== 'custom') setRange(presetRange(p));
   };
 
-  const reportBuilders: { key: DictKey; build: () => Promise<void> }[] = [
-    {
-      key: 'r_daily_closing',
-      build: async () => {
-        const rows: (string | number)[][] = [['date', 'status', 'employee', 'cash_difference_aed', 'gold_differences_g', 'reason', 'finalized_at']];
-        for (const d of data?.days ?? []) {
-          rows.push([
-            d.date,
-            d.status,
-            d.employeeName ?? '',
-            formatCash(d.cashDifferenceFils, false),
-            d.goldDifferences.map((g) => `${g.karat}:${formatGold(g.differenceMg, false)}`).join(' '),
-            d.reasonText ?? '',
-            d.finalizedAt ?? '',
-          ]);
-        }
-        exportCsv('daily-closing', rows);
-      },
-    },
-    {
-      key: 'r_cash_difference',
-      build: async () => {
-        const rows: (string | number)[][] = [['date', 'cash_difference_aed', 'state']];
-        for (const d of data?.days ?? []) {
-          rows.push([d.date, formatCash(d.cashDifferenceFils, false), d.cashDifferenceFils === 0 ? 'matched' : d.cashDifferenceFils > 0 ? 'surplus' : 'shortage']);
-        }
-        exportCsv('cash-difference', rows);
-      },
-    },
-    {
-      key: 'r_gold_by_karat',
-      build: async () => {
-        const rows: (string | number)[][] = [['date', 'karat', 'difference_g']];
-        for (const d of data?.days ?? []) {
-          for (const g of d.goldDifferences) rows.push([d.date, g.karat, formatGold(g.differenceMg, false)]);
-        }
-        exportCsv('gold-by-karat', rows);
-      },
-    },
-    {
-      key: 'r_ashraf',
-      build: async () => {
-        const rows: (string | number)[][] = [['holder', 'karat', 'weight_g', 'returned_g', 'remaining_g', 'delivery_date', 'expected_return', 'status']];
-        for (const m of (data?.outstanding ?? []).filter((x) => x.holderType === 'ashraf')) {
-          rows.push([m.holderName, m.karat, formatGold(Number(m.weightMg), false), formatGold(Number(m.returnedMg), false), formatGold(Number(m.weightMg) - Number(m.returnedMg), false), m.deliveryDate, m.expectedReturnDate ?? '', m.status]);
-        }
-        exportCsv('ashraf-gold', rows);
-      },
-    },
-    {
-      key: 'r_outstanding',
-      build: async () => {
-        const rows: (string | number)[][] = [['holder', 'type', 'direction', 'karat', 'remaining_g', 'delivery_date', 'expected_return', 'status']];
-        for (const m of data?.outstanding ?? []) {
-          rows.push([m.holderName, m.holderType, m.direction, m.karat, formatGold(Number(m.weightMg) - Number(m.returnedMg), false), m.deliveryDate, m.expectedReturnDate ?? '', m.status]);
-        }
-        exportCsv('outstanding-gold', rows);
-      },
-    },
-    { key: 'r_amanat', build: () => exportEntries('amanat') },
-    { key: 'r_debts', build: () => exportEntries('debt') },
-    { key: 'r_unregistered', build: () => exportEntries('unregistered_sale') },
-    { key: 'r_duplicates', build: () => exportEntries('duplicate_sale') },
-    {
-      key: 'r_monthly',
-      build: async () => {
-        if (!stats) return;
-        const rows: (string | number)[][] = [
-          ['month', stats.month],
-          ['days_recorded', stats.daysRecorded],
-          ['days_matched', stats.daysMatched],
-          ['days_shortage', stats.daysShort],
-          ['days_surplus', stats.daysOver],
-          ['total_shortage_aed', formatCash(stats.totalShortFils, false)],
-          ['total_surplus_aed', formatCash(stats.totalOverFils, false)],
-          ['net_aed', formatCash(stats.netCashFils, false)],
-          ['average_aed', formatCash(stats.averageDifferenceFils, false)],
-          ...stats.goldByKarat.map((g) => [`gold_${g.karat}_g`, formatGold(g.netMg, false)] as (string | number)[]),
-        ];
-        exportCsv('monthly-summary', rows);
-      },
-    },
-  ];
-
-  async function exportEntries(kind: string) {
-    const rows: (string | number)[][] = [['date', 'name', 'amount_aed', 'description', 'ref', 'note']];
-    const res = await apiGet<{ rows: (CashEntry & { businessDate?: string })[] }>(`/api/records/cash_entries`);
-    for (const e of res.rows.filter((x) => x.kind === kind)) {
-      rows.push([e.entryDate, e.personName ?? '', formatCash(Number(e.amountFils), false), e.description ?? '', e.refNo ?? '', e.note ?? '']);
-    }
-    exportCsv(kind, rows);
-  }
-
-  if (loading && !data) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-12" />
-        <Skeleton className="h-72" />
-      </div>
-    );
+  if (!can('reports.view')) {
+    return <EmptyState title={t('reports_restricted')} text={t('reports_restricted_hint')} icon="🔒" />;
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <h2 className="text-[18px] font-extrabold text-ink">{t('reports')}</h2>
+
       <Segmented
-        value={tab}
-        onChange={setTab}
+        value={preset}
+        onChange={choosePreset}
         options={[
-          { value: 'calendar', label: t('calendar') },
-          { value: 'analytics', label: t('analytics') },
-          { value: 'reports', label: t('reports') },
+          { value: 'today', label: t('preset_today') },
+          { value: 'week', label: t('preset_week') },
+          { value: 'month', label: t('preset_month') },
+          { value: 'year', label: t('preset_year') },
+          { value: 'custom', label: t('preset_custom') },
         ]}
       />
 
-      {tab === 'calendar' ? (
-        <Card>
-          <CardTitle title={t('reports_title')} icon={<CalendarDays className="h-4 w-4" />} />
-          <MonthCalendar
-            month={month}
-            digests={data?.days ?? []}
-            onMonthChange={setMonth}
-            onSelect={setSelected}
-            selected={selected}
-          />
-        </Card>
+      {preset === 'custom' ? (
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block">
+            <span className="label mb-1.5">{t('from')}</span>
+            <DateInput value={range.start} onChange={(v) => setRange((r) => ({ ...r, start: v }))} />
+          </label>
+          <label className="block">
+            <span className="label mb-1.5">{t('to')}</span>
+            <DateInput value={range.end} onChange={(v) => setRange((r) => ({ ...r, end: v }))} />
+          </label>
+        </div>
       ) : null}
 
-      {tab === 'analytics' && stats ? (
+      <div className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5">
+        <span className="text-[13px] text-ink">{t('include_cancelled')}</span>
+        <Toggle checked={includeCancelled} onChange={setIncludeCancelled} label={t('include_cancelled')} />
+      </div>
+
+      {loading ? (
+        <Skeleton className="h-96" />
+      ) : error || !data ? (
+        <ErrorState text={t('could_not_build_report')} onRetry={() => void load()} />
+      ) : (
         <>
-          <Card>
-            <CardTitle title={`${t('analytics')} · ${month}`} icon={<BarChart3 className="h-4 w-4" />} />
-            <div className="grid grid-cols-2 gap-2">
-              <Stat label={t('days_matched')} value={String(stats.daysMatched)} tone="gold" />
-              <Stat label={t('days_finalized')} value={String(stats.daysFinalized)} tone="lock" />
-              <Stat label={t('days_short')} value={String(stats.daysShort)} tone="bad" />
-              <Stat label={t('days_over')} value={String(stats.daysOver)} tone="ok" />
+          <section className="grid grid-cols-2 gap-2.5">
+            <StatCard label={t('total_orders')} value={String(data.totals.orders)} />
+            <StatCard label={t('active_orders')} value={String(data.totals.active)} tone="gold" />
+            <StatCard label={t('delivered_orders')} value={String(data.totals.delivered)} tone="ok" />
+            <StatCard label={t('cancelled')} value={String(data.totals.cancelled)} />
+            <StatCard label={t('card_overdue')} value={`🔴 ${data.totals.overdue}`} tone="bad" />
+            <StatCard
+              label={t('avg_delivery_time')}
+              value={data.averageDeliveryDays === null ? '—' : `${data.averageDeliveryDays} d`}
+            />
+            <StatCard
+              label={t('avg_delay')}
+              value={data.averageDelayDays === null ? '—' : `${data.averageDelayDays} d`}
+              tone={(data.averageDelayDays ?? 0) > 0 ? 'bad' : 'ok'}
+            />
+            <StatCard label={t('expected_gold')} value={`${formatWeight(data.totals.expectedWeightMg)} g`} tone="gold" />
+            <div className="col-span-2">
+              <StatCard label={t('actual_gold')} value={`${formatWeight(data.totals.actualWeightMg)} g`} tone="gold" />
             </div>
-            <div className="mt-3">
-              <KeyValue label={t('total_short')} value={aed(stats.totalShortFils)} tone="bad" />
-              <KeyValue label={t('total_over')} value={aed(stats.totalOverFils)} tone="ok" />
-              <KeyValue label={t('net_difference')} value={aed(stats.netCashFils)} strong tone="gold" />
-              <KeyValue label={t('avg_difference')} value={aed(stats.averageDifferenceFils)} />
-              <KeyValue label={t('largest_short')} value={stats.largestShort ? `${stats.largestShort.date} · ${aed(stats.largestShort.amountFils)}` : '—'} />
-              <KeyValue label={t('largest_over')} value={stats.largestOver ? `${stats.largestOver.date} · ${aed(stats.largestOver.amountFils)}` : '—'} />
-              <KeyValue label={t('worst_karat')} value={stats.worstKarat ?? '—'} />
-              {prev ? (
-                <KeyValue
-                  label={t('compare_prev_month')}
-                  value={`${aed(stats.netCashFils - prev.stats.netCashFils)}`}
-                  tone={stats.netCashFils - prev.stats.netCashFils >= 0 ? 'ok' : 'bad'}
+          </section>
+
+          {can('finance.view') ? (
+            <Card>
+              <CardTitle title={t('financial_dashboard')} subtitle={`${range.start} → ${range.end}`} />
+              <dl className="text-[13px]">
+                <Row label={t('total_order_value')} value={`${settings.currency} ${formatMoney(data.totals.orderValueFils)}`} strong />
+                <Row label={t('total_paid')} value={`${settings.currency} ${formatMoney(data.totals.paidFils)}`} />
+                <Row label={t('payments_received')} value={`${settings.currency} ${formatMoney(data.totals.paymentsReceivedFils)}`} />
+                <Row label={t('gold_exchange_value')} value={`${settings.currency} ${formatMoney(data.totals.exchangeValueFils)}`} />
+                <Row
+                  label={t('total_outstanding')}
+                  value={`${settings.currency} ${formatMoney(data.totals.outstandingFils)}`}
+                  tone={data.totals.outstandingFils > 0 ? 'bad' : 'ok'}
+                  strong
                 />
-              ) : null}
-            </div>
-          </Card>
+                <Row label={t('total_maker_cost')} value={`${settings.currency} ${formatMoney(data.totals.makerCostFils)}`} />
+                <Row
+                  label={t('estimated_profit')}
+                  value={`${settings.currency} ${formatMoney(data.totals.estimatedProfitFils)}`}
+                  tone={data.totals.estimatedProfitFils >= 0 ? 'ok' : 'bad'}
+                  strong
+                />
+              </dl>
+              <p className="mt-2 text-[11px] text-muted">
+                {t('cancelled_excluded')}
+              </p>
+            </Card>
+          ) : null}
+
+          <Breakdown title={t('by_karat')} buckets={data.byKarat} currency={settings.currency} />
+          <Breakdown title={t('by_maker')} buckets={data.byMaker} currency={settings.currency} />
+          <Breakdown title={t('by_traveler')} buckets={data.byTraveler} currency={settings.currency} />
+          <Breakdown title={t('by_destination')} buckets={data.byDestination} currency={settings.currency} />
+          <Breakdown title={t('by_category')} buckets={data.byCategory} currency={settings.currency} />
+          <Breakdown title={t('by_customer')} buckets={data.byCustomer.slice(0, 15)} currency={settings.currency} />
 
           <Card>
-            <CardTitle title={t('daily_chart')} />
-            <DiffChart digests={data?.days ?? []} />
-          </Card>
-
-          <Card>
-            <CardTitle title={t('gold_difference')} />
-            {stats.goldByKarat.map((g) => (
-              <KeyValue key={g.karat} label={g.karat} value={grams(g.netMg)} tone={g.netMg === 0 ? 'gold' : g.netMg > 0 ? 'ok' : 'bad'} />
-            ))}
-          </Card>
-
-          <Card>
-            <CardTitle title={t('quick_summary')} />
-            <KeyValue label={t('debts')} value={aed(stats.totals.debts)} />
-            <KeyValue label={t('commissions')} value={aed(stats.totals.commissions)} />
-            <KeyValue label={t('amanat')} value={aed(stats.totals.amanat)} />
-            <KeyValue label={t('unregistered_sales')} value={aed(stats.totals.unregistered)} />
-            <KeyValue label={t('duplicate_sales')} value={aed(stats.totals.duplicates)} />
-            <KeyValue label={t('principal')} value={aed(stats.totals.principal)} />
-          </Card>
-        </>
-      ) : null}
-
-      {tab === 'reports' ? (
-        <>
-          <Card>
-            <CardTitle title={t('search')} icon={<Search className="h-4 w-4" />} />
-            <div className="grid gap-2">
-              <TextInput value={query} onChange={setQuery} placeholder={t('search')} ariaLabel={t('search')} />
-              <Select
-                value={statusFilter}
-                onChange={setStatusFilter}
-                ariaLabel={t('filter')}
-                options={[
-                  { value: 'all', label: t('all') },
-                  { value: 'draft', label: t('st_draft') },
-                  { value: 'matched', label: t('st_matched') },
-                  { value: 'has_differences', label: t('st_has_differences') },
-                  { value: 'finalized', label: t('st_finalized') },
-                ]}
-              />
-            </div>
-            <ul className="mt-3 space-y-1">
-              {filtered.length === 0 ? (
-                <EmptyState text={t('no_record')} />
-              ) : (
-                filtered.map((d) => (
-                  <li key={d.date}>
-                    <button className="row w-full text-start" onClick={() => setSelected(d.date)}>
-                      <div>
-                        <p className="num text-[13px] font-bold text-ink">{d.date}</p>
-                        <p className="text-[11px] text-muted">{d.employeeName ?? ''}</p>
-                      </div>
-                      <CashDiff fils={d.cashDifferenceFils} />
-                    </button>
-                  </li>
-                ))
-              )}
-            </ul>
-          </Card>
-
-          <Card>
-            <CardTitle title={t('reports')} icon={<FileText className="h-4 w-4" />} />
-            <ul className="space-y-1.5">
-              {reportBuilders.map((r) => (
-                <li key={r.key} className="flex items-center justify-between gap-2 rounded-xl border border-line bg-surface2 px-3 py-2">
-                  <span className="text-[13px] font-semibold text-ink">{t(r.key)}</span>
-                  <button className="btn-ghost h-9 min-h-0 px-3 text-[12px]" onClick={() => void r.build()}>
-                    <Download className="h-3.5 w-3.5" />
-                    CSV
-                  </button>
-                </li>
+            <CardTitle title={t('export')} subtitle={t('export_hint')} icon={<Download className="h-4 w-4" />} />
+            <div className="grid grid-cols-2 gap-2">
+              {EXPORTS.map((e) => (
+                <a key={e.key} href={`/api/export/${e.key}`} className="btn-ghost btn-sm">
+                  {t(e.label)}
+                </a>
               ))}
-            </ul>
-            <button className="btn-ghost mt-3 w-full" onClick={() => window.print()}>
-              <Printer className="h-4 w-4" />
-              {t('print_pdf')}
-            </button>
+            </div>
           </Card>
         </>
-      ) : null}
-
-      <Modal open={!!selected} onClose={() => setSelected(null)} title={`${t('day_details')} · ${selected ?? ''}`} wide>
-        {!detail ? (
-          <Skeleton className="h-40" />
-        ) : !detail.day ? (
-          <EmptyState text={t('no_record')} />
-        ) : (
-          <DayDetail payload={detail} onOpen={() => {
-            setActiveDate(detail.date);
-            router.push('/cash');
-          }} />
-        )}
-      </Modal>
+      )}
     </div>
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: string; tone: 'gold' | 'ok' | 'bad' | 'lock' }) {
-  const color = tone === 'gold' ? 'text-gold' : tone === 'ok' ? 'text-ok' : tone === 'bad' ? 'text-bad' : 'text-lock';
+function Breakdown({ title, buckets, currency }: { title: string; buckets: ReportBucket[]; currency: string }) {
+  if (!buckets.length) return null;
+  const max = Math.max(...buckets.map((b) => b.count), 1);
   return (
-    <div className="rounded-xl border border-line bg-surface2 p-3">
-      <span className="label">{label}</span>
-      <p className={`num mt-1 text-[22px] font-extrabold ${color}`}>{value}</p>
-    </div>
+    <Card>
+      <CardTitle title={title} />
+      <ul className="space-y-2">
+        {buckets.map((b) => (
+          <li key={b.key}>
+            <div className="flex items-baseline justify-between gap-2 text-[13px]">
+              <span className="truncate font-semibold text-ink">{b.label}</span>
+              <span className="num shrink-0 text-muted">
+                {b.count} · {formatWeight(b.weightMg)} g · {currency} {formatMoney(b.valueFils)}
+              </span>
+            </div>
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface2">
+              <div className="h-full rounded-full bg-gold" style={{ width: `${Math.round((b.count / max) * 100)}%` }} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
-function DayDetail({ payload, onOpen }: { payload: DayPayload; onOpen: () => void }) {
-  const { t } = useApp();
-  const day = payload.day!;
-  const [audit, setAudit] = useState<{ id: string; action: string; entity: string; createdAt: string; actor: string; reason: string | null }[]>([]);
-
-  useEffect(() => {
-    apiGet<{ rows: typeof audit }>(`/api/audit?entityId=${day.id}&limit=30`).then((r) => setAudit(r.rows)).catch(() => undefined);
-  }, [day.id]);
-
-  const summaryFromSnapshot = day.snapshot as { results?: { cash: { differenceFils: number }; gold: { karat: string; differenceMg: number }[] } } | null;
-
+function Row({ label, value, strong, tone }: { label: string; value: string; strong?: boolean; tone?: 'bad' | 'ok' }) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <StatusPill tone={statusTone(day.status)} label={t(`st_${day.status}` as DictKey)} />
-        <span className="text-[12px] text-muted">{dubaiStamp(day.finalizedAt ?? day.updatedAt)}</span>
-      </div>
-
-      <div className="rounded-xl border border-line bg-surface2 p-3">
-        <KeyValue label={t('system_cash')} value={formatCash(day.systemCashFils ?? 0)} />
-        <KeyValue label={t('physical_cash')} value={formatCash(day.physicalCashFils)} />
-        {summaryFromSnapshot?.results ? (
-          <KeyValue
-            label={t('cash_difference')}
-            value={formatCash(summaryFromSnapshot.results.cash.differenceFils)}
-            strong
-            tone={summaryFromSnapshot.results.cash.differenceFils === 0 ? 'gold' : summaryFromSnapshot.results.cash.differenceFils > 0 ? 'ok' : 'bad'}
-          />
-        ) : null}
-      </div>
-
-      {payload.goldRows.length ? (
-        <div className="rounded-xl border border-line bg-surface2 p-3">
-          {payload.goldRows.map((g) => (
-            <KeyValue key={g.id} label={g.karat} value={`${formatGold(Number(g.drawerMg))} / ${formatGold(Number(g.systemMg))}`} />
-          ))}
-        </div>
-      ) : null}
-
-      {payload.entries.length ? (
-        <div className="rounded-xl border border-line bg-surface2 p-3">
-          {payload.entries.map((e) => (
-            <KeyValue key={e.id} label={`${e.kind} · ${e.personName ?? e.refNo ?? ''}`} value={formatCash(Number(e.amountFils))} />
-          ))}
-        </div>
-      ) : null}
-
-      {day.reasonText ? (
-        <div className="rounded-xl border border-warn/40 bg-warn/10 p-3 text-[13px] text-warn">{day.reasonText}</div>
-      ) : null}
-
-      {audit.length ? (
-        <div className="rounded-xl border border-line bg-surface2 p-3">
-          <p className="label mb-2">{t('audit_log')}</p>
-          <ul className="space-y-1">
-            {audit.map((a) => (
-              <li key={a.id} className="flex items-center justify-between gap-2 text-[11px] text-muted">
-                <span>{a.action} · {a.entity}</span>
-                <span className="num">{dubaiStamp(a.createdAt)}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      <button className="btn-primary w-full" onClick={onOpen}>
-        {t('open_full_day')}
-      </button>
+    <div className="flex items-baseline justify-between gap-3 border-b border-line/60 py-1.5 last:border-0">
+      <dt className={strong ? 'font-bold text-ink' : 'text-muted'}>{label}</dt>
+      <dd className={`num ${strong ? 'text-[15px] font-extrabold' : 'font-semibold'} ${tone === 'bad' ? 'text-bad' : tone === 'ok' ? 'text-ok' : 'text-ink'}`}>
+        {value}
+      </dd>
     </div>
   );
 }
