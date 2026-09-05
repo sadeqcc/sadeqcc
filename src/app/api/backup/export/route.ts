@@ -6,6 +6,7 @@ import { dubaiDate, nowIso } from '@/lib/date';
 export const BACKUP_TABLES = [
   'app_settings',
   'customers',
+  'customer_ledger',
   'makers',
   'travelers',
   'traveler_shipments',

@@ -3,6 +3,7 @@
  * milligrams, so a total is reproducible and never drifts.
  */
 import type { DictKey } from '@/i18n/dict';
+import type { CustomerAccount } from './types';
 import { applyBp, goldValueFils, mulDiv, sum } from './num';
 import { diffDays, dubaiDate } from './date';
 import {
@@ -113,6 +114,47 @@ export const BALANCE_ICON: Record<BalanceStatus, string> = {
   unpaid: '🔴',
   credit: '🔵',
 };
+
+/**
+ * A customer's whole position in one number.
+ *
+ * Orders keep their own balances, so the statement adds what those orders still
+ * owe to the entries that sit outside them — an old debt, a payment made against
+ * the account rather than one order, an amount written off. Cancelled orders
+ * never count.
+ */
+const num = (v: unknown): number => Number(v ?? 0) || 0;
+
+export function accountFrom(
+  customerId: string,
+  orders: { totalAmountFils: number; totalPaidFils: number; remainingBalanceFils: number; status: string }[],
+  entries: { direction: string; amountFils: number }[],
+): CustomerAccount {
+  const live = orders.filter((o) => o.status !== 'cancelled');
+  const ordersTotalFils = live.reduce((a, o) => a + num(o.totalAmountFils), 0);
+  const ordersPaidFils = live.reduce((a, o) => a + num(o.totalPaidFils), 0);
+  const ordersRemainingFils = live.reduce((a, o) => a + num(o.remainingBalanceFils), 0);
+
+  const ledgerDebitFils = entries.filter((e) => e.direction === 'debit').reduce((a, e) => a + num(e.amountFils), 0);
+  const ledgerCreditFils = entries.filter((e) => e.direction === 'credit').reduce((a, e) => a + num(e.amountFils), 0);
+
+  const net = ordersRemainingFils + ledgerDebitFils - ledgerCreditFils;
+  return {
+    customerId,
+    ordersTotalFils,
+    ordersPaidFils,
+    ordersRemainingFils,
+    ledgerDebitFils,
+    ledgerCreditFils,
+    // An overpaid account is reported as credit, never as a negative balance.
+    netBalanceFils: Math.max(net, 0),
+    creditFils: Math.max(-net, 0),
+    totalOrders: orders.length,
+    activeOrders: orders.filter((o) => o.status !== 'delivered' && o.status !== 'cancelled').length,
+    deliveredOrders: orders.filter((o) => o.status === 'delivered').length,
+  };
+}
+
 
 /* ---------------------------------------------------------------- weight */
 

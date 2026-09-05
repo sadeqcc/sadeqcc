@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ChevronRight, Plus } from 'lucide-react';
+import { ChevronRight, Plus, Wallet } from 'lucide-react';
 import { useApp } from '@/components/providers';
-import { EmptyState, ErrorState, PullToRefresh, SearchInput, Skeleton } from '@/components/ui';
+import { CustomerFormDialog } from '@/components/customer-form';
+import { StatCard } from '@/components/bits';
+import { EmptyState, ErrorState, PullToRefresh, SearchInput, Skeleton, Toggle } from '@/components/ui';
 import { apiGet, cache } from '@/lib/client';
 import { formatMoney } from '@/lib/num';
 
@@ -21,14 +23,17 @@ interface CustomerRow {
   deliveredOrders: number;
   totalPurchasesFils: number;
   outstandingFils: number;
+  creditFils: number;
 }
 
 export default function CustomersPage() {
-  const { settings, toast, t } = useApp();
+  const { settings, toast, t, can } = useApp();
   const [items, setItems] = useState<CustomerRow[]>([]);
   const [search, setSearch] = useState('');
+  const [owingOnly, setOwingOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [adding, setAdding] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -51,9 +56,14 @@ export default function CustomersPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((c) => [c.name, c.phone, c.city, c.country].some((v) => String(v ?? '').toLowerCase().includes(q)));
-  }, [items, search]);
+    let list = items;
+    if (owingOnly) list = list.filter((c) => c.outstandingFils > 0);
+    if (q) list = list.filter((c) => [c.name, c.phone, c.city, c.country].some((v) => String(v ?? '').toLowerCase().includes(q)));
+    return list;
+  }, [items, search, owingOnly]);
+
+  const totalOwed = items.reduce((a, c) => a + c.outstandingFils, 0);
+  const owingCount = items.filter((c) => c.outstandingFils > 0).length;
 
   return (
     <PullToRefresh
@@ -68,7 +78,32 @@ export default function CustomersPage() {
           <span className="text-[12px] text-muted">{t('customers_total', { n: items.length })}</span>
         </div>
 
+        {/* What the shop is owed across every customer, before any single one. */}
+        {items.length ? (
+          <div className="grid grid-cols-2 gap-2.5">
+            <StatCard
+              label={t('total_owed_to_you')}
+              value={`${settings.currency} ${formatMoney(totalOwed)}`}
+              tone={totalOwed > 0 ? 'bad' : 'ok'}
+            />
+            <StatCard label={t('customers')} value={String(items.length)} hint={t('customers_owing', { n: owingCount })} tone="gold" />
+          </div>
+        ) : null}
+
+        {can('customer.manage') ? (
+          <button type="button" className="btn-primary w-full" onClick={() => setAdding(true)}>
+            <Plus className="h-4 w-4" /> {t('add_customer')}
+          </button>
+        ) : null}
+
         <SearchInput value={search} onChange={setSearch} placeholder={t('search_customers')} />
+
+        {items.length ? (
+          <div className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5">
+            <span className="text-[13px] text-ink">{t('only_owing')}</span>
+            <Toggle checked={owingOnly} onChange={setOwingOnly} label={t('only_owing')} />
+          </div>
+        ) : null}
 
         {loading ? (
           <div className="space-y-2">
@@ -80,13 +115,15 @@ export default function CustomersPage() {
           <ErrorState text={t('could_not_load_customers')} onRetry={() => void load()} />
         ) : filtered.length === 0 ? (
           <EmptyState
-            title={search ? t('no_matches') : t('empty_customers_title')}
-            text={search ? t('no_matches_hint') : t('empty_customers_text')}
+            title={search || owingOnly ? t('no_matches') : t('empty_customers_title')}
+            text={search || owingOnly ? t('no_matches_hint') : t('empty_customers_text')}
             icon="👤"
             action={
-              <Link href="/orders/new" className="btn-primary">
-                <Plus className="h-4 w-4" /> {t('new_order')}
-              </Link>
+              can('customer.manage') ? (
+                <button type="button" className="btn-primary" onClick={() => setAdding(true)}>
+                  <Plus className="h-4 w-4" /> {t('add_customer')}
+                </button>
+              ) : null
             }
           />
         ) : (
@@ -105,16 +142,17 @@ export default function CustomersPage() {
                     <span className="block truncate text-[12px] text-muted">
                       {[c.phone, [c.city, c.country].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || '—'}
                     </span>
-                    <span className="mt-0.5 flex flex-wrap gap-x-3 text-[12px]">
+                    <span className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[12px]">
                       <span className="text-muted">
                         {t('total_orders')} <span className="num font-semibold text-ink">{c.totalOrders}</span>
                       </span>
-                      <span className="text-muted">
-                        {t('active_orders')} <span className="num font-semibold text-ink">{c.activeOrders}</span>
-                      </span>
                       {c.outstandingFils > 0 ? (
                         <span className="num font-bold text-bad">
-                          {settings.currency} {formatMoney(c.outstandingFils)}
+                          {t('owes_you')} {settings.currency} {formatMoney(c.outstandingFils)}
+                        </span>
+                      ) : c.creditFils > 0 ? (
+                        <span className="num font-bold text-info">
+                          {t('you_owe')} {settings.currency} {formatMoney(c.creditFils)}
                         </span>
                       ) : (
                         <span className="font-semibold text-ok">{t('settled')}</span>
@@ -127,7 +165,19 @@ export default function CustomersPage() {
             ))}
           </ul>
         )}
+
+        <a href="/api/export/customers" className="btn-ghost btn-sm w-full">
+          <Wallet className="h-4 w-4" /> {t('export_customers')}
+        </a>
       </div>
+
+      <CustomerFormDialog
+        open={adding}
+        onClose={() => setAdding(false)}
+        onSaved={() => {
+          void load();
+        }}
+      />
     </PullToRefresh>
   );
 }

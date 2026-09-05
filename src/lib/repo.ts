@@ -163,6 +163,7 @@ export const ENTITY_TABLES = {
   gold_exchanges: 'gold_exchanges',
   order_notes: 'order_notes',
   order_media: 'order_media',
+  customer_ledger: 'customer_ledger',
   follow_ups: 'follow_ups',
   orders: 'orders',
 } as const;

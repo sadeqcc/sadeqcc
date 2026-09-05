@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  accountFrom,
   balanceOf,
   compareWeight,
   comparePriority,
@@ -22,6 +23,8 @@ import {
   percentToBp,
 } from '../src/lib/num';
 import { countdownLabel, diffDays, presetRange } from '../src/lib/date';
+
+import { LEDGER_DIRECTION } from '../src/lib/types';
 
 describe('decimal-safe parsing and formatting', () => {
   it('parses money to whole fils without float drift', () => {
@@ -299,5 +302,71 @@ describe('Dubai dates', () => {
     expect(presetRange('today', '2026-09-05')).toEqual({ start: '2026-09-05', end: '2026-09-05' });
     expect(presetRange('month', '2026-09-05')).toEqual({ start: '2026-09-01', end: '2026-09-30' });
     expect(presetRange('year', '2026-09-05')).toEqual({ start: '2026-01-01', end: '2026-12-31' });
+  });
+});
+
+describe('customer account', () => {
+  const orders = (...xs: [number, number, string][]) =>
+    xs.map(([total, paid, status]) => ({
+      totalAmountFils: total,
+      totalPaidFils: paid,
+      remainingBalanceFils: Math.max(total - paid, 0),
+      status,
+    }));
+
+  it('adds what orders still owe to what is owed outside them', () => {
+    const a = accountFrom('c1', orders([2_350_000, 1_800_000, 'delivered'], [1_000_000, 0, 'maker']), [
+      { direction: 'debit', amountFils: 500_000 },
+    ]);
+    expect(a.ordersRemainingFils).toBe(1_550_000);
+    expect(a.ledgerDebitFils).toBe(500_000);
+    expect(a.netBalanceFils).toBe(2_050_000);
+    expect(a.creditFils).toBe(0);
+  });
+
+  it('takes a payment on account off the balance', () => {
+    const a = accountFrom('c1', orders([1_000_000, 0, 'ready']), [{ direction: 'credit', amountFils: 400_000 }]);
+    expect(a.netBalanceFils).toBe(600_000);
+  });
+
+  it('reports an overpaid account as credit, never a negative balance', () => {
+    const a = accountFrom('c1', orders([1_000_000, 1_000_000, 'delivered']), [{ direction: 'credit', amountFils: 250_000 }]);
+    expect(a.netBalanceFils).toBe(0);
+    expect(a.creditFils).toBe(250_000);
+  });
+
+  it('never counts a cancelled order toward the balance', () => {
+    const a = accountFrom('c1', orders([900_000, 0, 'cancelled'], [100_000, 0, 'ordered']), []);
+    expect(a.ordersTotalFils).toBe(100_000);
+    expect(a.netBalanceFils).toBe(100_000);
+    expect(a.totalOrders).toBe(2);
+  });
+
+  it('carries an opening debt with no orders at all', () => {
+    const a = accountFrom('c1', [], [{ direction: 'debit', amountFils: 750_000 }]);
+    expect(a.netBalanceFils).toBe(750_000);
+    expect(a.totalOrders).toBe(0);
+  });
+
+  it('settles to zero once everything is paid', () => {
+    const a = accountFrom('c1', orders([1_000_000, 1_000_000, 'delivered']), [
+      { direction: 'debit', amountFils: 200_000 },
+      { direction: 'credit', amountFils: 200_000 },
+    ]);
+    expect(a.netBalanceFils).toBe(0);
+    expect(a.creditFils).toBe(0);
+  });
+
+  it('counts active and delivered orders separately', () => {
+    const a = accountFrom('c1', orders([1, 0, 'maker'], [1, 0, 'ready'], [1, 1, 'delivered'], [1, 0, 'cancelled']), []);
+    expect(a.activeOrders).toBe(2);
+    expect(a.deliveredOrders).toBe(1);
+  });
+
+  it('files each entry kind in the direction it belongs', () => {
+    expect(LEDGER_DIRECTION.opening).toBe('debit');
+    expect(LEDGER_DIRECTION.charge).toBe('debit');
+    expect(LEDGER_DIRECTION.payment).toBe('credit');
+    expect(LEDGER_DIRECTION.writeoff).toBe('credit');
   });
 });

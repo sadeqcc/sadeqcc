@@ -2,6 +2,7 @@ import { fail, invalid, isDenied, ok, readJson, requireCtx } from '@/lib/api';
 import { getDb } from '@/lib/db';
 import { archiveRecord, getRecord, isEntity, n, restoreRecord, safeJson, updateRecord } from '@/lib/repo';
 import { customerSchema, makerSchema, shipmentSchema, tagSchema, travelerSchema } from '@/lib/schemas';
+import { getAccount, listLedger } from '@/lib/customers';
 
 type Params = { params: Promise<{ entity: string; id: string }> };
 
@@ -57,7 +58,11 @@ export async function GET(_req: Request, { params }: Params) {
   }
 
   const hydrated = entity === 'customers' ? { ...item, tags: safeJson<string[]>(item.tags as string, []) } : item;
-  return ok({ item: hydrated, stats, shipments });
+  if (entity === 'customers') {
+    const [account, ledger] = await Promise.all([getAccount(g.ctx.ownerId, id), listLedger(g.ctx.ownerId, id)]);
+    return ok({ item: hydrated, stats, shipments, account, ledger });
+  }
+  return ok({ item: hydrated, stats, shipments, account: null, ledger: [] });
 }
 
 export async function PATCH(req: Request, { params }: Params) {

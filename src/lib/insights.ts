@@ -4,6 +4,7 @@ import { getSettings, n, safeJson } from './repo';
 import { addDays, diffDays, dubaiDate } from './date';
 import { comparePriority, urgencyOf } from './calc';
 import { decorate, hydrateOrder } from './orders';
+import { accountsByCustomer } from './customers';
 import type { OrderStatus, OrderView, Urgency } from './types';
 
 type Row = Record<string, unknown>;
@@ -85,7 +86,8 @@ export async function buildDashboard(ownerId: string): Promise<Dashboard> {
   const tomorrow = addDays(today, 1);
   const settings = await getSettings(ownerId);
 
-  const [counts, balanceRow, weightRow, deliveredTodayRow, openRows, activityRows] = await Promise.all([
+  const [accounts, counts, balanceRow, weightRow, deliveredTodayRow, openRows, activityRows] = await Promise.all([
+    accountsByCustomer(ownerId),
     db.all<{ status: string; n: number }>(
       `SELECT status, COUNT(*) AS n FROM orders WHERE ownerId = ? AND deletedAt IS NULL GROUP BY status`,
       [ownerId],
@@ -128,7 +130,9 @@ export async function buildDashboard(ownerId: string): Promise<Dashboard> {
     deliveredToday: n(deliveredTodayRow?.n),
     dueToday: open.filter((o) => o.expectedDeliveryDate === today).length,
     dueTomorrow: open.filter((o) => o.expectedDeliveryDate === tomorrow).length,
-    outstandingBalanceFils: n(balanceRow?.v),
+    // What the shop is actually owed: every customer's whole account, orders
+    // and standalone entries together.
+    outstandingBalanceFils: [...accounts.values()].reduce((a, x) => a + x.netBalanceFils, 0),
     expectedGoldMg: n(weightRow?.v),
   };
 

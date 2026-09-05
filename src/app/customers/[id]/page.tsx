@@ -4,10 +4,11 @@ import { use, useCallback, useEffect, useState } from 'react';
 import { MessageCircle, Phone } from 'lucide-react';
 import { useApp } from '@/components/providers';
 import { OrderCard, StatCard, Tag } from '@/components/bits';
+import { LedgerPanel } from '@/components/ledger';
 import { Card, CardTitle, EmptyState, ErrorState, Skeleton } from '@/components/ui';
 import { apiGet, whatsappLink } from '@/lib/client';
 import { formatMoney, phoneDigits } from '@/lib/num';
-import type { OrderView } from '@/lib/types';
+import type { CustomerAccount, LedgerEntry, OrderView } from '@/lib/types';
 
 interface Customer {
   id: string;
@@ -23,19 +24,18 @@ interface Customer {
   notes: string | null;
 }
 
-interface Stats {
-  totalOrders: number;
-  activeOrders: number;
-  deliveredOrders: number;
-  totalPurchasesFils: number;
-  outstandingFils: number;
+interface Bundle {
+  item: Customer;
+  account: CustomerAccount;
+  ledger: LedgerEntry[];
 }
 
 export default function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { settings, t } = useApp();
   const [customer, setCustomer] = useState<Customer | null>(null);
-  const [stats, setStats] = useState<Stats | null>(null);
+  const [account, setAccount] = useState<CustomerAccount | null>(null);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -43,11 +43,12 @@ export default function CustomerPage({ params }: { params: Promise<{ id: string 
   const load = useCallback(async () => {
     try {
       const [d, o] = await Promise.all([
-        apiGet<{ item: Customer; stats: Stats }>(`/api/directory/customers/${id}`),
-        apiGet<{ orders: OrderView[] }>(`/api/orders?customerId=${id}&limit=100`),
+        apiGet<Bundle>(`/api/directory/customers/${id}`),
+        apiGet<{ orders: OrderView[] }>(`/api/orders?customerId=${id}&limit=200`),
       ]);
       setCustomer(d.item);
-      setStats(d.stats);
+      setAccount(d.account);
+      setLedger(d.ledger ?? []);
       setOrders(o.orders);
       setError(false);
     } catch {
@@ -105,20 +106,27 @@ export default function CustomerPage({ params }: { params: Promise<{ id: string 
         ) : null}
       </div>
 
-      {stats ? (
-        <div className="grid grid-cols-2 gap-2.5">
-          <StatCard label={t('total_orders')} value={String(stats.totalOrders)} />
-          <StatCard label={t('active_orders')} value={String(stats.activeOrders)} tone="gold" />
-          <StatCard label={t('delivered_orders')} value={String(stats.deliveredOrders)} tone="ok" />
-          <StatCard
-            label={t('outstanding')}
-            value={`${settings.currency} ${formatMoney(stats.outstandingFils)}`}
-            tone={stats.outstandingFils > 0 ? 'bad' : 'ok'}
-          />
-          <div className="col-span-2">
-            <StatCard label={t('total_purchases')} value={`${settings.currency} ${formatMoney(stats.totalPurchasesFils)}`} tone="gold" />
+      {account ? (
+        <>
+          <Card>
+            <LedgerPanel
+              customerId={id}
+              account={account}
+              entries={ledger}
+              onChange={({ entries, account: next }) => {
+                setLedger(entries);
+                setAccount(next);
+              }}
+            />
+          </Card>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            <StatCard label={t('total_orders')} value={String(account.totalOrders)} />
+            <StatCard label={t('active_orders')} value={String(account.activeOrders)} tone="gold" />
+            <StatCard label={t('delivered_orders')} value={String(account.deliveredOrders)} tone="ok" />
+            <StatCard label={t('total_purchases')} value={`${settings.currency} ${formatMoney(account.ordersTotalFils)}`} tone="gold" />
           </div>
-        </div>
+        </>
       ) : null}
 
       {customer.notes ? (

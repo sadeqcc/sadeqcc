@@ -5,6 +5,7 @@ import { n, safeJson } from '@/lib/repo';
 import { STATUS_LABEL, type OrderStatus } from '@/lib/types';
 import { urgencyOf } from '@/lib/calc';
 import { dubaiDate } from '@/lib/date';
+import { accountsByCustomer, listLedger } from '@/lib/customers';
 
 type Params = { params: Promise<{ entity: string }> };
 
@@ -72,16 +73,49 @@ export async function GET(_req: Request, { params }: Params) {
     }
     case 'customers': {
       const data = await db.all<Record<string, unknown>>(
-        `SELECT c.*,
-                (SELECT COUNT(*) FROM orders o WHERE o.customerId = c.id AND o.deletedAt IS NULL) AS totalOrders,
-                (SELECT COALESCE(SUM(o.remainingBalanceFils),0) FROM orders o WHERE o.customerId = c.id AND o.deletedAt IS NULL AND o.status != 'cancelled') AS outstanding
-           FROM customers c WHERE c.ownerId = ? AND c.deletedAt IS NULL ORDER BY c.name`,
+        'SELECT * FROM customers WHERE ownerId = ? AND deletedAt IS NULL ORDER BY name',
         [g.ctx.ownerId],
       );
+      const accounts = await accountsByCustomer(g.ctx.ownerId);
       rows = [
-        ['Name', 'Phone', 'WhatsApp', 'Country', 'City', 'Type', 'Instagram', 'Email', 'Total Orders', 'Outstanding', 'Tags', 'Notes'],
-        ...data.map((c) => [c.name, c.phone ?? '', c.whatsapp ?? '', c.country ?? '', c.city ?? '', c.customerType ?? '', c.instagram ?? '', c.email ?? '', n(c.totalOrders), formatMoney(n(c.outstanding), false), safeJson<string[]>(c.tags as string, []).join(' | '), c.notes ?? '']),
+        ['Name', 'Phone', 'WhatsApp', 'Country', 'City', 'Type', 'Instagram', 'Email',
+         'Total Orders', 'Orders Value', 'Paid On Orders', 'Remaining On Orders',
+         'Other Owed', 'Paid On Account', 'Balance Owed', 'Customer Credit', 'Tags', 'Notes'],
+        ...data.map((c) => {
+          const a = accounts.get(String(c.id));
+          return [
+            c.name, c.phone ?? '', c.whatsapp ?? '', c.country ?? '', c.city ?? '', c.customerType ?? '',
+            c.instagram ?? '', c.email ?? '',
+            a?.totalOrders ?? 0,
+            formatMoney(a?.ordersTotalFils ?? 0, false),
+            formatMoney(a?.ordersPaidFils ?? 0, false),
+            formatMoney(a?.ordersRemainingFils ?? 0, false),
+            formatMoney(a?.ledgerDebitFils ?? 0, false),
+            formatMoney(a?.ledgerCreditFils ?? 0, false),
+            formatMoney(a?.netBalanceFils ?? 0, false),
+            formatMoney(a?.creditFils ?? 0, false),
+            safeJson<string[]>(c.tags as string, []).join(' | '),
+            c.notes ?? '',
+          ];
+        }),
       ];
+      break;
+    }
+    case 'statement': {
+      // Every account entry across customers, for reconciling the shop's book.
+      const customers = await db.all<Record<string, unknown>>(
+        'SELECT id, name FROM customers WHERE ownerId = ? AND deletedAt IS NULL ORDER BY name',
+        [g.ctx.ownerId],
+      );
+      rows = [['Customer', 'Date', 'Type', 'Direction', 'Amount', 'Method', 'Reference', 'Note', 'Recorded By']];
+      for (const c of customers) {
+        for (const e of await listLedger(g.ctx.ownerId, String(c.id))) {
+          rows.push([
+            c.name, e.entryDate, e.kind, e.direction, formatMoney(e.amountFils, false),
+            e.method ?? '', e.reference ?? '', e.note ?? '', e.createdByName ?? '',
+          ]);
+        }
+      }
       break;
     }
     case 'makers': {

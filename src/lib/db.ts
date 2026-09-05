@@ -141,6 +141,33 @@ CREATE TABLE IF NOT EXISTS customers (
 );
 CREATE INDEX IF NOT EXISTS ix_customers_owner ON customers(ownerId, name);
 
+/*
+ * Money that is not attached to any single order: a debt carried over from
+ * before the app, a payment made against the account as a whole, or a written
+ * off amount. Order balances live on the orders themselves; these entries sit
+ * beside them and the two together are the customer's statement.
+ */
+CREATE TABLE IF NOT EXISTS customer_ledger (
+  id TEXT PRIMARY KEY,
+  ownerId TEXT NOT NULL,
+  customerId TEXT NOT NULL,
+  direction TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'charge',
+  amountFils INTEGER NOT NULL,
+  entryDate TEXT NOT NULL,
+  method TEXT,
+  reference TEXT,
+  note TEXT,
+  mediaId TEXT,
+  createdByName TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL,
+  createdBy TEXT NOT NULL,
+  deletedAt TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_ledger_customer ON customer_ledger(ownerId, customerId, entryDate);
+
 CREATE TABLE IF NOT EXISTS makers (
   id TEXT PRIMARY KEY,
   ownerId TEXT NOT NULL,

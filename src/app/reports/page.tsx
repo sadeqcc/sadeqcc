@@ -17,6 +17,7 @@ const EXPORTS = [
   { key: 'orders', label: 'export_orders' },
   { key: 'payments', label: 'export_payments' },
   { key: 'customers', label: 'export_customers' },
+  { key: 'statement', label: 'export_statement' },
   { key: 'makers', label: 'export_makers' },
   { key: 'travelers', label: 'export_travelers' },
 ] as const satisfies readonly { key: string; label: DictKey }[];

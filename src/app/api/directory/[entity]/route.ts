@@ -3,6 +3,7 @@ import { getDb } from '@/lib/db';
 import { insertRecord, isEntity, listActive, newId, n } from '@/lib/repo';
 import { customerSchema, makerSchema, shipmentSchema, tagSchema, travelerSchema } from '@/lib/schemas';
 import { safeJson } from '@/lib/repo';
+import { accountsByCustomer } from '@/lib/customers';
 
 type Params = { params: Promise<{ entity: string }> };
 
@@ -45,29 +46,25 @@ export async function GET(req: Request, { params }: Params) {
   }
 
   if (entity === 'customers') {
-    const stats = await db.all<{ customerId: string; total: number; active: number; delivered: number; purchases: number; outstanding: number }>(
-      `SELECT customerId,
-              COUNT(*) AS total,
-              SUM(CASE WHEN status NOT IN ('delivered','cancelled') THEN 1 ELSE 0 END) AS active,
-              SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END) AS delivered,
-              SUM(CASE WHEN status != 'cancelled' THEN totalAmountFils ELSE 0 END) AS purchases,
-              SUM(CASE WHEN status != 'cancelled' THEN remainingBalanceFils ELSE 0 END) AS outstanding
-         FROM orders WHERE ownerId = ? AND deletedAt IS NULL GROUP BY customerId`,
-      [g.ctx.ownerId],
-    );
-    const byId = new Map(stats.map((s) => [s.customerId, s]));
+    // The balance shown is the whole account, not just what orders still owe.
+    const accounts = await accountsByCustomer(g.ctx.ownerId);
     rows = rows.map((r) => {
-      const s = byId.get(String(r.id));
+      const a = accounts.get(String(r.id));
       return {
         ...r,
         tags: safeJson<string[]>(r.tags as string, []),
-        totalOrders: n(s?.total),
-        activeOrders: n(s?.active),
-        deliveredOrders: n(s?.delivered),
-        totalPurchasesFils: n(s?.purchases),
-        outstandingFils: n(s?.outstanding),
+        totalOrders: a?.totalOrders ?? 0,
+        activeOrders: a?.activeOrders ?? 0,
+        deliveredOrders: a?.deliveredOrders ?? 0,
+        totalPurchasesFils: a?.ordersTotalFils ?? 0,
+        outstandingFils: a?.netBalanceFils ?? 0,
+        creditFils: a?.creditFils ?? 0,
+        ledgerDebitFils: a?.ledgerDebitFils ?? 0,
+        ledgerCreditFils: a?.ledgerCreditFils ?? 0,
       };
     });
+    if (url.searchParams.get('owing') === '1') rows = rows.filter((r) => n(r.outstandingFils) > 0);
+    rows.sort((x, y) => n(y.outstandingFils) - n(x.outstandingFils) || String(x.name).localeCompare(String(y.name)));
   }
 
   if (entity === 'makers') {

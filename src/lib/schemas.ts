@@ -245,6 +245,18 @@ export const exchangeSchema = z.object({
   notes: optionalText(500),
 });
 
+export const ledgerSchema = z.object({
+  id: id.optional(),
+  kind: z.enum(['opening', 'charge', 'payment', 'writeoff']),
+  amountFils: positiveFils.refine((v) => v > 0, 'Enter an amount'),
+  entryDate: isoDate,
+  method: optionalText(30),
+  reference: optionalText(60),
+  note: optionalText(500),
+  mediaId: id.nullable().optional(),
+  reason: optionalText(300),
+});
+
 export const noteSchema = z.object({
   id: id.optional(),
   text: z.string().trim().min(1, 'Write something').max(4000),

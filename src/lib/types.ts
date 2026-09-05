@@ -343,6 +343,59 @@ export interface Customer {
   updatedAt: string;
 }
 
+/** A statement line that is not part of an order. */
+export interface LedgerEntry {
+  id: string;
+  customerId: string;
+  /** debit: the customer owes more. credit: the customer owes less. */
+  direction: 'debit' | 'credit';
+  kind: LedgerKind;
+  amountFils: number;
+  entryDate: string;
+  method: string | null;
+  reference: string | null;
+  note: string | null;
+  mediaId: string | null;
+  createdByName: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const LEDGER_KINDS = ['opening', 'charge', 'payment', 'writeoff'] as const;
+export type LedgerKind = (typeof LEDGER_KINDS)[number];
+
+/** Which way each kind moves the balance — the form never lets these disagree. */
+export const LEDGER_DIRECTION: Record<LedgerKind, 'debit' | 'credit'> = {
+  opening: 'debit',
+  charge: 'debit',
+  payment: 'credit',
+  writeoff: 'credit',
+};
+
+export const LEDGER_KIND_KEY: Record<LedgerKind, DictKey> = {
+  opening: 'ledger_opening',
+  charge: 'ledger_charge',
+  payment: 'ledger_payment',
+  writeoff: 'ledger_writeoff',
+};
+
+/** A customer's whole position: orders plus everything outside them. */
+export interface CustomerAccount {
+  customerId: string;
+  ordersTotalFils: number;
+  ordersPaidFils: number;
+  ordersRemainingFils: number;
+  ledgerDebitFils: number;
+  ledgerCreditFils: number;
+  /** Positive: the customer owes the shop. Negative is reported as credit. */
+  netBalanceFils: number;
+  creditFils: number;
+  totalOrders: number;
+  activeOrders: number;
+  deliveredOrders: number;
+}
+
 export interface Maker {
   id: string;
   name: string;
