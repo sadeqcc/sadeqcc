@@ -6,7 +6,7 @@ import { useApp } from '@/components/providers';
 import { Card, CardTitle, Field, NumberInput, Segmented, Select, Spinner, TextInput, Toggle } from '@/components/ui';
 import { ApiError, apiGet, apiWrite, download } from '@/lib/client';
 import { formatMoney, formatWeight, parseMoney, parseWeight } from '@/lib/num';
-import { dubaiDate } from '@/lib/date';
+import { diffDays, dubaiDate, dubaiShort } from '@/lib/date';
 import { LANGS, LANG_LABEL } from '@/i18n/dict';
 
 interface StaffUser {
@@ -42,6 +42,12 @@ export default function SettingsPage() {
   const [staff, setStaff] = useState<StaffUser[]>([]);
   const [newStaff, setNewStaff] = useState({ username: '', password: '', displayName: '', role: 'employee' });
   const restoreRef = useRef<HTMLInputElement>(null);
+  // Days since the last backup, so the reminder can nag when it should.
+  const backupAgeDays = settings.lastBackupAt ? diffDays(dubaiDate(), settings.lastBackupAt.slice(0, 10)) : null;
+  const markBackupTaken = () => {
+    void setSettings({ lastBackupAt: new Date().toISOString() });
+    toast(t('backup_taken'));
+  };
   const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
@@ -351,11 +357,32 @@ export default function SettingsPage() {
       {can('backup.manage') ? (
         <Card>
           <CardTitle title={t('backup')} subtitle={t('backup_hint')} icon={<Database className="h-4 w-4" />} />
+
+          {/* A backup only helps if it is recent, so the app keeps score. */}
+          <div
+            className={`mb-3 rounded-xl border px-3 py-2.5 text-[13px] ${
+              backupAgeDays === null || backupAgeDays >= 7
+                ? 'border-warn/40 bg-warn/10 text-warn'
+                : 'border-ok/40 bg-ok/10 text-ok'
+            }`}
+          >
+            <p className="font-bold">
+              {settings.lastBackupAt === null || backupAgeDays === null
+                ? t('backup_never')
+                : backupAgeDays <= 0
+                  ? t('backup_ok')
+                  : backupAgeDays >= 7
+                    ? t('backup_due', { n: backupAgeDays })
+                    : t('backup_last', { when: dubaiShort(settings.lastBackupAt.slice(0, 10)) })}
+            </p>
+            <p className="mt-1 text-[12px] leading-relaxed text-muted">{t('backup_reminder')}</p>
+          </div>
+
           <div className="space-y-2">
-            <a href="/api/backup/export" className="btn-ghost w-full">
-              <Download className="h-4 w-4" /> {t('download_backup')}
+            <a href="/api/backup/export" className="btn-primary w-full" onClick={markBackupTaken}>
+              <Download className="h-4 w-4" /> {t('take_backup')}
             </a>
-            <a href="/api/backup/export?media=0" className="btn-ghost w-full">
+            <a href="/api/backup/export?media=0" className="btn-ghost w-full" onClick={markBackupTaken}>
               <Download className="h-4 w-4" /> {t('download_backup_light')}
             </a>
             <button type="button" className="btn-ghost w-full" onClick={() => restoreRef.current?.click()} disabled={restoring}>

@@ -270,6 +270,8 @@ export interface AppSettings {
   vatPercent: number;
   orderNumberPrefix: string;
   orderNumberPadding: number;
+  /** When a full backup was last downloaded, so the app can ask for the next. */
+  lastBackupAt: string | null;
   notifications: {
     overdue: boolean;
     dueToday: boolean;
@@ -310,6 +312,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   vatPercent: 0,
   orderNumberPrefix: 'GO',
   orderNumberPadding: 4,
+  lastBackupAt: null,
   notifications: {
     overdue: true,
     dueToday: true,

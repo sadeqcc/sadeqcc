@@ -770,6 +770,14 @@ const en = {
   total_owed_to_you: 'Total owed to you',
   customers_owing: '{n} customers owe you',
 
+  backup_never: 'No backup has been taken yet',
+  backup_last: 'Last backup {when}',
+  backup_due: 'It has been {n} days since the last backup',
+  backup_ok: 'Backed up today',
+  backup_reminder: 'A backup is one file holding every order, payment, photo and audit entry. Keep a recent one somewhere off this server.',
+  take_backup: 'Take a backup now',
+  backup_taken: 'Backup downloaded — keep it somewhere safe',
+
   /* --------------------------------------------------------------- misc */
   pull_to_refresh: 'Pull to refresh',
   release_to_refresh: 'Release to refresh',
@@ -1514,6 +1522,14 @@ const ar: Record<DictKey, string> = {
   only_owing: 'العملاء الذين عليهم رصيد فقط',
   total_owed_to_you: 'إجمالي المستحق لك',
   customers_owing: '{n} عملاء عليهم رصيد',
+
+  backup_never: 'لم تؤخذ أي نسخة احتياطية بعد',
+  backup_last: 'آخر نسخة {when}',
+  backup_due: 'مضى {n} يوماً على آخر نسخة احتياطية',
+  backup_ok: 'أُخذت نسخة اليوم',
+  backup_reminder: 'النسخة الاحتياطية ملف واحد يحوي كل طلب ودفعة وصورة وسجل تدقيق. احتفظ بنسخة حديثة خارج هذا الخادم.',
+  take_backup: 'خذ نسخة احتياطية الآن',
+  backup_taken: 'تم تنزيل النسخة — احفظها في مكان آمن',
 
   pull_to_refresh: 'اسحب للتحديث',
   release_to_refresh: 'أفلت للتحديث',

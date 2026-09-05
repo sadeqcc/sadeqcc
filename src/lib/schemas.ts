@@ -310,6 +310,7 @@ export const settingsSchema = z.object({
   vatPercent: z.number().min(0).max(100).optional(),
   orderNumberPrefix: text(8).optional(),
   orderNumberPadding: z.number().int().min(1).max(8).optional(),
+  lastBackupAt: z.string().datetime().nullable().optional(),
   notifications: z
     .object({
       overdue: z.boolean(),

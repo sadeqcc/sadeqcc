@@ -36,7 +36,9 @@ export async function POST(req: Request) {
       for (const key of Object.keys(row)) {
         if (!columns.includes(key)) return fail('unknown_column', 422, { table, column: key });
       }
-      if (table !== 'order_counters' && !row.id) return fail('row_missing_id', 422, { table });
+      // Only tables that actually have an id column are required to carry one:
+      // app_settings is keyed by ownerId and order_counters by ownerId + year.
+      if (columns.includes('id') && !row.id) return fail('row_missing_id', 422, { table });
     }
     staged.push({ table, rows, columns });
     counts[table] = rows.length;
