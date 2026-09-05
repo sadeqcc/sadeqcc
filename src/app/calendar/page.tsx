@@ -6,7 +6,9 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Card, CardTitle, EmptyState, ErrorState, Skeleton } from '@/components/ui';
 import { apiGet } from '@/lib/client';
 import { daysInMonth, dubaiDate, dubaiShort, monthKey, shiftMonth, weekdayIndex } from '@/lib/date';
-import { STATUS_LABEL, type OrderStatus, type Urgency } from '@/lib/types';
+import { STATUS_KEY, type OrderStatus, type Urgency } from '@/lib/types';
+import { useApp } from '@/components/providers';
+import type { DictKey } from '@/i18n/dict';
 
 interface Entry {
   date: string;
@@ -19,11 +21,11 @@ interface Entry {
   urgency: Urgency;
 }
 
-const KIND_LABEL: Record<Entry['kind'], string> = {
-  ready: 'Expected ready',
-  delivery: 'Expected delivery',
-  departure: 'Traveler departure',
-  arrival: 'Expected arrival',
+const KIND_LABEL: Record<Entry['kind'], DictKey> = {
+  ready: 'cal_ready',
+  delivery: 'cal_delivery',
+  departure: 'cal_departure',
+  arrival: 'cal_arrival',
 };
 
 const KIND_DOT: Record<Entry['kind'], string> = {
@@ -33,9 +35,13 @@ const KIND_DOT: Record<Entry['kind'], string> = {
   arrival: 'bg-st-arrived',
 };
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+/** Sunday-first, as the shop's week runs. */
+const WEEKDAY_INDEXES = [0, 1, 2, 3, 4, 5, 6];
 
 export default function CalendarPage() {
+  const { t, lang } = useApp();
+  const weekdayFmt = new Intl.DateTimeFormat(lang === 'ar' ? 'ar' : 'en-GB', { weekday: 'short', timeZone: 'UTC' });
+  const weekdays = WEEKDAY_INDEXES.map((i) => weekdayFmt.format(new Date(Date.UTC(2024, 0, 7 + i))));
   const today = dubaiDate();
   const [month, setMonth] = useState(() => monthKey(today));
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -77,23 +83,23 @@ export default function CalendarPage() {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <button type="button" className="btn-ghost btn-sm" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label="Previous month">
+        <button type="button" className="btn-ghost btn-sm" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label={t('prev_month')}>
           <ChevronLeft className="h-4 w-4" />
         </button>
         <h2 className="num text-[16px] font-extrabold text-ink">{month}</h2>
-        <button type="button" className="btn-ghost btn-sm" onClick={() => setMonth((m) => shiftMonth(m, 1))} aria-label="Next month">
+        <button type="button" className="btn-ghost btn-sm" onClick={() => setMonth((m) => shiftMonth(m, 1))} aria-label={t('next_month')}>
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
 
       {error ? (
-        <ErrorState text="Could not load the calendar." onRetry={() => void load()} />
+        <ErrorState text={t('could_not_load_calendar')} onRetry={() => void load()} />
       ) : loading ? (
         <Skeleton className="h-64" />
       ) : (
         <Card>
           <ol className="mb-1 grid grid-cols-7 gap-1 text-center text-[10px] font-bold uppercase text-muted">
-            {WEEKDAYS.map((w) => (
+            {weekdays.map((w) => (
               <li key={w}>{w}</li>
             ))}
           </ol>
@@ -133,7 +139,7 @@ export default function CalendarPage() {
             {(Object.keys(KIND_LABEL) as Entry['kind'][]).map((k) => (
               <li key={k} className="flex items-center gap-1.5">
                 <span className={`h-2 w-2 rounded-full ${KIND_DOT[k]}`} aria-hidden />
-                {KIND_LABEL[k]}
+                {t(KIND_LABEL[k])}
               </li>
             ))}
           </ul>
@@ -141,9 +147,12 @@ export default function CalendarPage() {
       )}
 
       <Card>
-        <CardTitle title={dubaiShort(selected)} subtitle={`${selectedEntries.length} ${selectedEntries.length === 1 ? 'entry' : 'entries'}`} />
+        <CardTitle
+          title={dubaiShort(selected)}
+          subtitle={selectedEntries.length === 1 ? t('entry_count_1') : t('entries_count', { n: selectedEntries.length })}
+        />
         {selectedEntries.length === 0 ? (
-          <EmptyState title="Nothing scheduled" text="Pick another date to see what is due." icon="📅" />
+          <EmptyState title={t('nothing_scheduled')} text={t('nothing_scheduled_hint')} icon="📅" />
         ) : (
           <ul className="divide-y divide-line/70">
             {selectedEntries.map((e, i) => (
@@ -155,7 +164,7 @@ export default function CalendarPage() {
                       {e.customerName} · {e.productName}
                     </span>
                     <span className="num block truncate text-[12px] text-muted">
-                      {e.orderNumber} · {KIND_LABEL[e.kind]} · {STATUS_LABEL[e.status]}
+                      {e.orderNumber} · {t(KIND_LABEL[e.kind])} · {t(STATUS_KEY[e.status])}
                     </span>
                   </span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted" />

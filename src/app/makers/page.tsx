@@ -23,7 +23,7 @@ interface MakerRow {
 }
 
 export default function MakersPage() {
-  const { toast } = useApp();
+  const { toast, t } = useApp();
   const [items, setItems] = useState<MakerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -52,20 +52,20 @@ export default function MakersPage() {
     <PullToRefresh
       onRefresh={async () => {
         await load();
-        toast('Up to date', 'info');
+        toast(t('up_to_date'), 'info');
       }}
     >
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-[18px] font-extrabold text-ink">Makers</h2>
-          <span className="text-[12px] text-muted">{items.length} total</span>
+          <h2 className="text-[18px] font-extrabold text-ink">{t('makers')}</h2>
+          <span className="text-[12px] text-muted">{t('customers_total', { n: items.length })}</span>
         </div>
 
         {/* The picker doubles as the "add maker" entry point. */}
         <div key={pickerKey}>
           <EntityPicker
             entity="makers"
-            label="Add or find a maker"
+            label={t('add_find_maker')}
             value={null}
             onChange={(id) => {
               setPickerKey((k) => k + 1);
@@ -82,9 +82,9 @@ export default function MakersPage() {
             ))}
           </div>
         ) : error ? (
-          <ErrorState text="Could not load makers." onRetry={() => void load()} />
+          <ErrorState text={t('could_not_load_makers')} onRetry={() => void load()} />
         ) : items.length === 0 ? (
-          <EmptyState title="No makers yet" text="Add the workshops you send work to." icon="🔨" />
+          <EmptyState title={t('empty_makers_title')} text={t('empty_makers_text')} icon="🔨" />
         ) : (
           <ul className="space-y-2">
             {items.map((m) => (
@@ -97,12 +97,12 @@ export default function MakersPage() {
                     </span>
                     <span className="mt-0.5 flex flex-wrap gap-x-3 text-[12px]">
                       <span className="text-muted">
-                        Active <span className="num font-semibold text-ink">{m.activeOrders}</span>
+                        {t('active_orders')} <span className="num font-semibold text-ink">{m.activeOrders}</span>
                       </span>
                       <span className="text-muted">
-                        Ready <span className="num font-semibold text-ok">{m.readyOrders}</span>
+                        {t('ready_orders')} <span className="num font-semibold text-ok">{m.readyOrders}</span>
                       </span>
-                      {m.lateOrders > 0 ? <span className="num font-bold text-bad">🔴 {m.lateOrders} late</span> : null}
+                      {m.lateOrders > 0 ? <span className="num font-bold text-bad">🔴 {m.lateOrders} {t('late_orders')}</span> : null}
                       <span className="num text-muted">{formatWeight(m.expectedWeightMg)} g</span>
                     </span>
                   </span>
@@ -114,7 +114,7 @@ export default function MakersPage() {
         )}
 
         <Link href="/orders?quick=maker" className="btn-ghost w-full">
-          <Plus className="h-4 w-4" /> View all orders with makers
+          <Plus className="h-4 w-4" /> {t('view_maker_orders')}
         </Link>
       </div>
     </PullToRefresh>

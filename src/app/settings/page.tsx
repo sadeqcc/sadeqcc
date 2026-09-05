@@ -1,12 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Database, Download, KeyRound, Palette, Store, Upload, Users } from 'lucide-react';
+import { Database, Download, KeyRound, Languages, Palette, Store, Upload, Users } from 'lucide-react';
 import { useApp } from '@/components/providers';
 import { Card, CardTitle, Field, NumberInput, Segmented, Select, Spinner, TextInput, Toggle } from '@/components/ui';
 import { ApiError, apiGet, apiWrite, download } from '@/lib/client';
 import { formatMoney, formatWeight, parseMoney, parseWeight } from '@/lib/num';
 import { dubaiDate } from '@/lib/date';
+import { LANGS, LANG_LABEL } from '@/i18n/dict';
 
 interface StaffUser {
   id: string;
@@ -17,7 +18,7 @@ interface StaffUser {
 }
 
 export default function SettingsPage() {
-  const { settings, setSettings, user, refreshAuth, toast, confirm, can } = useApp();
+  const { settings, setSettings, user, refreshAuth, toast, confirm, can, t } = useApp();
   const [shopName, setShopName] = useState(settings.shopName);
   const [shopPhone, setShopPhone] = useState(settings.shopPhone);
   const [shopAddress, setShopAddress] = useState(settings.shopAddress);
@@ -97,9 +98,9 @@ export default function SettingsPage() {
         paymentMethods: splitList(lists.paymentMethods),
         destinations: splitList(lists.destinations),
       });
-      toast('Settings saved');
+      toast(t('settings_saved'));
     } catch {
-      toast('Could not save the settings', 'error');
+      toast(t('could_not_save_settings'), 'error');
     } finally {
       setSaving(false);
     }
@@ -111,33 +112,33 @@ export default function SettingsPage() {
       await refreshAuth();
       setPin('');
       setCurrentPin('');
-      toast(pin ? 'PIN updated' : 'PIN removed');
+      toast(pin ? t('pin_updated') : t('pin_removed'));
     } catch (e) {
-      toast(e instanceof ApiError && e.code === 'wrong_pin' ? 'Current PIN is wrong' : 'Could not update the PIN', 'error');
+      toast(e instanceof ApiError && e.code === 'wrong_pin' ? t('wrong_current_pin') : t('could_not_update_pin'), 'error');
     }
   };
 
   const addStaff = async () => {
     if (newStaff.username.length < 3 || newStaff.password.length < 6) {
-      toast('Username needs 3+ characters and the password 6+', 'error');
+      toast(t('credentials_rule'), 'error');
       return;
     }
     try {
       await apiWrite('/api/users', newStaff, 'POST', { queue: false });
       setNewStaff({ username: '', password: '', displayName: '', role: 'employee' });
       await loadStaff();
-      toast('Staff account created');
+      toast(t('staff_created'));
     } catch (e) {
-      toast(e instanceof ApiError && e.code === 'username_taken' ? 'That username is taken' : 'Could not create the account', 'error');
+      toast(e instanceof ApiError && e.code === 'username_taken' ? t('username_taken') : t('could_not_create_account'), 'error');
     }
   };
 
   const restore = async (file: File) => {
     const c = await confirm({
-      title: 'Restore this backup?',
-      body: 'The file is validated first. Nothing is deleted unless the whole backup checks out.',
+      title: t('restore_title'),
+      body: t('restore_body'),
       danger: true,
-      confirmLabel: 'Validate and restore',
+      confirmLabel: t('restore_ok'),
       requirePin: true,
     });
     if (!c.ok) return;
@@ -146,16 +147,16 @@ export default function SettingsPage() {
       const text = await file.text();
       const backup = JSON.parse(text) as unknown;
       const res = await apiWrite<{ counts: Record<string, number> }>('/api/backup/restore', { backup, pin: c.pin }, 'POST', { queue: false });
-      toast(`Restored ${Object.values(res?.counts ?? {}).reduce((a, b) => a + b, 0)} records`);
+      toast(t('restored_n', { n: Object.values(res?.counts ?? {}).reduce((a, b) => a + b, 0) }));
       window.location.reload();
     } catch (e) {
       const code = e instanceof ApiError ? e.code : 'invalid_backup';
       toast(
         code === 'wrong_pin'
-          ? 'Wrong PIN — nothing was changed'
+          ? t('restore_pin_wrong')
           : code === 'unknown_table' || code === 'unknown_column' || code === 'invalid_backup'
-            ? 'That backup file failed validation — your data is untouched'
-            : 'Could not restore the backup',
+            ? t('restore_invalid')
+            : t('could_not_restore'),
         'error',
       );
     } finally {
@@ -166,41 +167,51 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-[18px] font-extrabold text-ink">Settings</h2>
+      <h2 className="text-[18px] font-extrabold text-ink">{t('settings')}</h2>
+
+      {/* Language sits first: it is what every other label on this page depends on. */}
+      <Card>
+        <CardTitle title={t('language')} subtitle={t('language_hint')} icon={<Languages className="h-4 w-4" />} />
+        <Segmented
+          value={settings.language}
+          onChange={(v) => void setSettings({ language: v })}
+          options={LANGS.map((l) => ({ value: l, label: LANG_LABEL[l] }))}
+        />
+      </Card>
 
       <Card>
-        <CardTitle title="Appearance" icon={<Palette className="h-4 w-4" />} />
+        <CardTitle title={t('appearance')} icon={<Palette className="h-4 w-4" />} />
         <Segmented
           value={settings.theme}
           onChange={(v) => void setSettings({ theme: v })}
           options={[
-            { value: 'dark', label: 'Dark' },
-            { value: 'light', label: 'Light' },
-            { value: 'system', label: 'System' },
+            { value: 'dark', label: t('theme_dark') },
+            { value: 'light', label: t('theme_light') },
+            { value: 'system', label: t('theme_system') },
           ]}
         />
-        <p className="mt-2 text-[12px] text-muted">Dark mode is the default for the shop floor.</p>
+        <p className="mt-2 text-[12px] text-muted">{t('theme_hint')}</p>
       </Card>
 
       {can('settings.manage') ? (
         <>
           <Card>
-            <CardTitle title="Shop" icon={<Store className="h-4 w-4" />} />
+            <CardTitle title={t('shop')} icon={<Store className="h-4 w-4" />} />
             <div className="space-y-3">
-              <Field label="Shop name">
+              <Field label={t('shop_name')}>
                 <TextInput value={shopName} onChange={setShopName} />
               </Field>
-              <Field label="Shop phone">
+              <Field label={t('shop_phone')}>
                 <TextInput value={shopPhone} onChange={setShopPhone} inputMode="tel" />
               </Field>
-              <Field label="Address">
+              <Field label={t('shop_address')}>
                 <TextInput value={shopAddress} onChange={setShopAddress} />
               </Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Currency">
+                <Field label={t('currency')}>
                   <TextInput value={currency} onChange={setCurrency} />
                 </Field>
-                <Field label="Timezone" hint="Fixed for this shop">
+                <Field label={t('timezone')} hint={t('timezone_hint')}>
                   <TextInput value={settings.timezone} onChange={() => undefined} disabled />
                 </Field>
               </div>
@@ -208,28 +219,28 @@ export default function SettingsPage() {
           </Card>
 
           <Card>
-            <CardTitle title="Order defaults" />
+            <CardTitle title={t('order_defaults')} />
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Order number prefix" hint={`e.g. ${prefix || 'GO'}-${dubaiDate().slice(0, 4)}-0001`}>
+                <Field label={t('number_prefix')} hint={t('number_prefix_hint', { example: `${prefix || 'GO'}-${dubaiDate().slice(0, 4)}-0001` })}>
                   <TextInput value={prefix} onChange={setPrefix} />
                 </Field>
-                <Field label="Number padding">
+                <Field label={t('number_padding')}>
                   <NumberInput value={padding} onChange={setPadding} />
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Default weight tolerance">
+                <Field label={t('default_tolerance')}>
                   <NumberInput value={tolerance} onChange={setTolerance} suffix="g" />
                 </Field>
-                <Field label="Default making charge">
+                <Field label={t('default_making')}>
                   <NumberInput value={making} onChange={setMaking} suffix={`${currency}/g`} />
                 </Field>
               </div>
-              <Field label="Default VAT">
+              <Field label={t('default_vat')}>
                 <NumberInput value={vat} onChange={setVat} suffix="%" />
               </Field>
-              <Field label="Weight precision" hint="Weights always store 3 decimals; this controls rounding on display.">
+              <Field label={t('weight_precision')} hint={t('weight_precision_hint')}>
                 <Select
                   value={String(settings.weightPrecision)}
                   onChange={(v) => void setSettings({ weightPrecision: Number(v) as 1 | 2 | 3 })}
@@ -244,21 +255,21 @@ export default function SettingsPage() {
           </Card>
 
           <Card>
-            <CardTitle title="Lists" subtitle="Comma separated" />
+            <CardTitle title={t('lists')} subtitle={t('lists_hint')} />
             <div className="space-y-3">
-              <Field label="Karats">
+              <Field label={t('karats')}>
                 <TextInput value={lists.karats} onChange={(v) => setLists((l) => ({ ...l, karats: v }))} />
               </Field>
-              <Field label="Styles">
+              <Field label={t('styles')}>
                 <TextInput value={lists.styles} onChange={(v) => setLists((l) => ({ ...l, styles: v }))} />
               </Field>
-              <Field label="Categories">
+              <Field label={t('categories')}>
                 <TextInput value={lists.categories} onChange={(v) => setLists((l) => ({ ...l, categories: v }))} />
               </Field>
-              <Field label="Payment methods">
+              <Field label={t('payment_methods')}>
                 <TextInput value={lists.paymentMethods} onChange={(v) => setLists((l) => ({ ...l, paymentMethods: v }))} />
               </Field>
-              <Field label="Destinations">
+              <Field label={t('destinations')}>
                 <TextInput value={lists.destinations} onChange={(v) => setLists((l) => ({ ...l, destinations: v }))} />
               </Field>
             </div>
@@ -266,31 +277,31 @@ export default function SettingsPage() {
 
           <button type="button" className="btn-primary w-full" onClick={() => void saveShop()} disabled={saving}>
             {saving ? <Spinner /> : null}
-            Save settings
+            {t('save_settings')}
           </button>
         </>
       ) : null}
 
       <Card>
-        <CardTitle title="Security PIN" subtitle="Required to delete a payment or restore a backup" icon={<KeyRound className="h-4 w-4" />} />
+        <CardTitle title={t('security_pin')} subtitle={t('security_pin_hint')} icon={<KeyRound className="h-4 w-4" />} />
         <div className="space-y-3">
           {user?.hasPin ? (
-            <Field label="Current PIN">
+            <Field label={t('current_pin')}>
               <input className="input num" type="password" inputMode="numeric" value={currentPin} onChange={(e) => setCurrentPin(e.target.value)} />
             </Field>
           ) : null}
-          <Field label="New PIN" hint="4–8 digits. Leave empty to remove the PIN.">
+          <Field label={t('new_pin')} hint={t('new_pin_hint')}>
             <input className="input num" type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)} />
           </Field>
           <button type="button" className="btn-ghost w-full" onClick={() => void savePin()}>
-            {user?.hasPin ? 'Update PIN' : 'Set PIN'}
+            {user?.hasPin ? t('update_pin') : t('set_pin')}
           </button>
         </div>
       </Card>
 
       {can('user.manage') ? (
         <Card>
-          <CardTitle title="Staff" subtitle="Managers and employees share this shop's data" icon={<Users className="h-4 w-4" />} />
+          <CardTitle title={t('staff')} subtitle={t('staff_hint')} icon={<Users className="h-4 w-4" />} />
           {staff.length ? (
             <ul className="mb-3 divide-y divide-line/70">
               {staff.map((s) => (
@@ -317,21 +328,21 @@ export default function SettingsPage() {
           ) : null}
           <div className="space-y-2">
             <div className="grid grid-cols-2 gap-2">
-              <TextInput value={newStaff.username} onChange={(v) => setNewStaff((s) => ({ ...s, username: v }))} placeholder="username" ariaLabel="New staff username" />
-              <TextInput value={newStaff.password} onChange={(v) => setNewStaff((s) => ({ ...s, password: v }))} type="password" placeholder="password" ariaLabel="New staff password" />
+              <TextInput value={newStaff.username} onChange={(v) => setNewStaff((s) => ({ ...s, username: v }))} placeholder={t('staff_username')} ariaLabel={t('staff_username')} />
+              <TextInput value={newStaff.password} onChange={(v) => setNewStaff((s) => ({ ...s, password: v }))} type="password" placeholder={t('staff_password')} ariaLabel={t('staff_password')} />
             </div>
-            <TextInput value={newStaff.displayName} onChange={(v) => setNewStaff((s) => ({ ...s, displayName: v }))} placeholder="Display name" ariaLabel="New staff display name" />
+            <TextInput value={newStaff.displayName} onChange={(v) => setNewStaff((s) => ({ ...s, displayName: v }))} placeholder={t('staff_display_name')} ariaLabel={t('staff_display_name')} />
             <Select
               value={newStaff.role}
               onChange={(v) => setNewStaff((s) => ({ ...s, role: v }))}
-              ariaLabel="New staff role"
+              ariaLabel={t('staff')}
               options={[
-                { value: 'employee', label: 'Employee — create and update orders, no deletes' },
-                { value: 'manager', label: 'Manager — orders, customers, payments, reports' },
+                { value: 'employee', label: t('role_employee') },
+                { value: 'manager', label: t('role_manager') },
               ]}
             />
             <button type="button" className="btn-ghost w-full" onClick={() => void addStaff()}>
-              Add staff account
+              {t('add_staff')}
             </button>
           </div>
         </Card>
@@ -339,17 +350,17 @@ export default function SettingsPage() {
 
       {can('backup.manage') ? (
         <Card>
-          <CardTitle title="Backup" subtitle="A full JSON copy of this shop's data" icon={<Database className="h-4 w-4" />} />
+          <CardTitle title={t('backup')} subtitle={t('backup_hint')} icon={<Database className="h-4 w-4" />} />
           <div className="space-y-2">
             <a href="/api/backup/export" className="btn-ghost w-full">
-              <Download className="h-4 w-4" /> Download full backup
+              <Download className="h-4 w-4" /> {t('download_backup')}
             </a>
             <a href="/api/backup/export?media=0" className="btn-ghost w-full">
-              <Download className="h-4 w-4" /> Download backup without photos
+              <Download className="h-4 w-4" /> {t('download_backup_light')}
             </a>
             <button type="button" className="btn-ghost w-full" onClick={() => restoreRef.current?.click()} disabled={restoring}>
               {restoring ? <Spinner /> : <Upload className="h-4 w-4" />}
-              Restore from backup
+              {t('restore_backup')}
             </button>
             <input
               ref={restoreRef}
@@ -362,7 +373,7 @@ export default function SettingsPage() {
               }}
             />
             <p className="text-[11px] text-muted">
-              A restore replaces this shop&apos;s data only after the file passes validation.
+              {t('restore_note')}
             </p>
           </div>
         </Card>
@@ -370,7 +381,7 @@ export default function SettingsPage() {
 
       {can('audit.view') ? (
         <Card>
-          <CardTitle title="Audit log" subtitle="Every create, edit, delete and status change" />
+          <CardTitle title={t('audit_log')} subtitle={t('audit_log_hint')} />
           <button
             type="button"
             className="btn-ghost w-full"
@@ -379,17 +390,17 @@ export default function SettingsPage() {
                 const d = await apiGet<{ entries: unknown[] }>('/api/audit?limit=1000');
                 download(`gold-orders-audit-${dubaiDate()}.json`, JSON.stringify(d.entries, null, 2));
               } catch {
-                toast('Could not download the audit log', 'error');
+                toast(t('could_not_download_audit'), 'error');
               }
             }}
           >
-            <Download className="h-4 w-4" /> Download audit log
+            <Download className="h-4 w-4" /> {t('download_audit')}
           </button>
         </Card>
       ) : null}
 
       <p className="pb-2 text-center text-[11px] text-muted">
-        GOLD ORDERS · Asia/Dubai · money to 2 decimals · weight to 3 decimals
+        {t('settings_footer')}
       </p>
     </div>
   );

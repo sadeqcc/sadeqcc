@@ -35,7 +35,7 @@ interface Shipment {
 
 export default function TravelerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { settings, toast, confirm, can } = useApp();
+  const { settings, toast, confirm, can, t } = useApp();
   const [traveler, setTraveler] = useState<Traveler | null>(null);
   const [shipments, setShipments] = useState<Shipment[]>([]);
   const [orders, setOrders] = useState<OrderView[]>([]);
@@ -65,7 +65,7 @@ export default function TravelerPage({ params }: { params: Promise<{ id: string 
   }, [load]);
 
   if (loading) return <Skeleton className="h-96" />;
-  if (error || !traveler) return <ErrorState text="Could not load this traveler." onRetry={() => void load()} />;
+  if (error || !traveler) return <ErrorState text={t('could_not_load_traveler')} onRetry={() => void load()} />;
 
   const inTransit = orders.filter((o) => o.status === 'traveler');
   const totalWeightMg = inTransit.reduce((a, o) => a + (o.actualWeightMg ?? o.expectedWeightMg), 0);
@@ -75,9 +75,9 @@ export default function TravelerPage({ params }: { params: Promise<{ id: string 
   /** Section 32 — bulk arrival, behind an explicit confirmation. */
   const markAllArrived = async () => {
     const c = await confirm({
-      title: `Mark ${inTransit.length} orders as arrived?`,
-      body: 'Each order gets its own timeline entry with today’s Dubai date.',
-      confirmLabel: 'Mark all arrived',
+      title: t('mark_all_title', { n: inTransit.length }),
+      body: t('mark_all_body'),
+      confirmLabel: t('mark_all_ok'),
     });
     if (!c.ok) return;
     setBusy(true);
@@ -85,10 +85,10 @@ export default function TravelerPage({ params }: { params: Promise<{ id: string 
       for (const o of inTransit) {
         await apiWrite(`/api/orders/${o.id}/status`, { toStatus: 'arrived', destination: o.destination }, 'POST', { queue: false });
       }
-      toast(`${inTransit.length} orders marked arrived`);
+      toast(t('marked_arrived', { n: inTransit.length }));
       await load();
     } catch {
-      toast('Some orders could not be updated', 'error');
+      toast(t('some_failed'), 'error');
     } finally {
       setBusy(false);
     }
@@ -104,41 +104,41 @@ export default function TravelerPage({ params }: { params: Promise<{ id: string 
       <div className="flex gap-2 no-print">
         {phone ? (
           <a href={`tel:${phone}`} className="btn-ghost btn-sm flex-1">
-            <Phone className="h-4 w-4" /> Call
+            <Phone className="h-4 w-4" /> {t('call')}
           </a>
         ) : null}
         {whatsapp ? (
           <a href={whatsappLink(whatsapp)} target="_blank" rel="noreferrer" className="btn-ghost btn-sm flex-1">
-            <MessageCircle className="h-4 w-4" /> WhatsApp
+            <MessageCircle className="h-4 w-4" /> {t('whatsapp')}
           </a>
         ) : null}
         {inTransit.length ? (
           <Link href={`/print/packing/${id}`} className="btn-ghost btn-sm flex-1">
-            <Printer className="h-4 w-4" /> Packing list
+            <Printer className="h-4 w-4" /> {t('packing_list')}
           </Link>
         ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-2.5">
-        <StatCard label="Currently Carrying" value={String(inTransit.length)} tone="info" />
-        <StatCard label="Total Weight" value={`${formatWeight(totalWeightMg)} g`} tone="gold" />
+        <StatCard label={t('currently_carrying')} value={String(inTransit.length)} tone="info" />
+        <StatCard label={t('total_weight')} value={`${formatWeight(totalWeightMg)} g`} tone="gold" />
       </div>
 
       {shipments.length ? (
         <Card>
-          <CardTitle title="Trips" subtitle="Grouped by destination and departure" />
+          <CardTitle title={t('trips')} subtitle={t('trips_hint')} />
           <ul className="divide-y divide-line/70">
             {shipments.map((s) => (
               <li key={s.id} className="py-2.5">
                 <p className="text-[14px] font-bold text-ink">Dubai → {s.destination}</p>
                 <p className="num text-[12px] text-muted">
-                  Departs {dubaiShort(s.departureDate)} · Arrives {dubaiShort(s.expectedArrival)}
+                  {t('departure')} {dubaiShort(s.departureDate)} · {t('expected_arrival')} {dubaiShort(s.expectedArrival)}
                   {s.flightNumber ? ` · ${s.flightNumber}` : ''}
                   {s.airline ? ` · ${s.airline}` : ''}
                 </p>
                 <p className="num text-[12px] text-muted">
-                  {s.orderCount} {s.orderCount === 1 ? 'order' : 'orders'} · {formatWeight(s.totalWeightMg)} g
-                  {s.arrivedAt ? ` · arrived ${dubaiShort(s.arrivedAt)}` : ''}
+                  {s.orderCount === 1 ? t('order_count_1') : t('orders_count', { n: s.orderCount })} · {formatWeight(s.totalWeightMg)} g
+                  {s.arrivedAt ? ` · ${t('arrived_on', { date: dubaiShort(s.arrivedAt) })}` : ''}
                 </p>
               </li>
             ))}
@@ -149,14 +149,14 @@ export default function TravelerPage({ params }: { params: Promise<{ id: string 
       {can('order.status') && inTransit.length ? (
         <button type="button" className="btn-ghost w-full" onClick={() => void markAllArrived()} disabled={busy}>
           {busy ? <Spinner /> : null}
-          Mark all {inTransit.length} as arrived
+          {t('mark_all_arrived', { n: inTransit.length })}
         </button>
       ) : null}
 
       <section>
-        <CardTitle title="Orders" subtitle={`${orders.length} in total`} />
+        <CardTitle title={t('nav_orders')} subtitle={t('orders_count', { n: orders.length })} />
         {orders.length === 0 ? (
-          <EmptyState title="No orders yet" text="Assign this traveler when moving an order to Traveler." icon="✈️" />
+          <EmptyState title={t('empty_orders_title')} text={t('no_orders_traveler')} icon="✈️" />
         ) : (
           <div className="space-y-2.5">
             {orders.map((o) => (

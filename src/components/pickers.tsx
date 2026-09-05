@@ -5,7 +5,7 @@ import { Check, Plus, Search } from 'lucide-react';
 import { useApp } from './providers';
 import { Field, Modal, SearchInput, Select, Spinner, TextInput } from './ui';
 import { apiGet, apiWrite, uuid } from '@/lib/client';
-import { CUSTOMER_TYPES, MAKER_SPECIALTIES, COMMON_ROUTES } from '@/lib/types';
+import { CUSTOMER_TYPES, MAKER_SPECIALTIES } from '@/lib/types';
 
 export interface DirectoryItem {
   id: string;
@@ -23,10 +23,12 @@ export interface DirectoryItem {
 
 type Entity = 'customers' | 'makers' | 'travelers';
 
-const TITLES: Record<Entity, { picker: string; create: string; empty: string }> = {
-  customers: { picker: 'Choose customer', create: 'New customer', empty: 'No customers yet' },
-  makers: { picker: 'Choose maker', create: 'New maker', empty: 'No makers yet' },
-  travelers: { picker: 'Choose traveler', create: 'New traveler', empty: 'No travelers yet' },
+import type { DictKey } from '@/i18n/dict';
+
+const TITLES: Record<Entity, { picker: DictKey; create: DictKey; empty: DictKey; select: DictKey }> = {
+  customers: { picker: 'choose_customer', create: 'new_customer', empty: 'empty_customers_title', select: 'select_customer' },
+  makers: { picker: 'choose_maker', create: 'new_maker', empty: 'empty_makers_title', select: 'select_maker' },
+  travelers: { picker: 'choose_traveler', create: 'new_traveler', empty: 'empty_travelers_title', select: 'select_traveler' },
 };
 
 /**
@@ -48,7 +50,7 @@ export function EntityPicker({
   required?: boolean;
   error?: string | null;
 }) {
-  const { toast, can } = useApp();
+  const { toast, can, t, settings } = useApp();
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [items, setItems] = useState<DirectoryItem[]>([]);
@@ -65,7 +67,7 @@ export function EntityPicker({
       const d = await apiGet<{ items: DirectoryItem[] }>(`/api/directory/${entity}`);
       setItems(d.items);
     } catch {
-      toast('Could not load the list', 'error');
+      toast(t('could_not_load_list'), 'error');
     } finally {
       setLoading(false);
     }
@@ -96,13 +98,13 @@ export function EntityPicker({
       if (res?.item) {
         setItems((list) => [res.item, ...list]);
         onChange(res.item.id, res.item);
-        toast(`${res.item.name} added`);
+        toast(t('added_name', { name: res.item.name }));
         setCreating(false);
         setOpen(false);
         setDraft({});
       }
     } catch {
-      toast('Could not save', 'error');
+      toast(t('could_not_save'), 'error');
     } finally {
       setSaving(false);
     }
@@ -118,17 +120,17 @@ export function EntityPicker({
           onClick={() => setOpen(true)}
           className={`input flex items-center justify-between text-start ${selected ? 'text-ink' : 'text-muted'}`}
         >
-          <span className="truncate">{selected ? selected.name : `Select ${entity.slice(0, -1)}`}</span>
+          <span className="truncate">{selected ? selected.name : t(TITLES[entity].select)}</span>
           <Search className="h-4 w-4 shrink-0 text-muted" />
         </button>
       </Field>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={TITLES[entity].picker}>
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by name or phone" autoFocus />
+      <Modal open={open} onClose={() => setOpen(false)} title={t(TITLES[entity].picker)}>
+        <SearchInput value={search} onChange={setSearch} placeholder={t('search_name_phone')} autoFocus />
 
         {canCreate ? (
           <button type="button" className="btn-ghost btn-sm w-full" onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" /> {TITLES[entity].create}
+            <Plus className="h-4 w-4" /> {t(TITLES[entity].create)}
           </button>
         ) : null}
 
@@ -141,7 +143,7 @@ export function EntityPicker({
               setOpen(false);
             }}
           >
-            Clear selection
+            {t('clear_selection')}
           </button>
         ) : null}
 
@@ -150,7 +152,7 @@ export function EntityPicker({
             <Spinner className="h-6 w-6" />
           </div>
         ) : filtered.length === 0 ? (
-          <p className="py-6 text-center text-[13px] text-muted">{search ? 'No matches' : TITLES[entity].empty}</p>
+          <p className="py-6 text-center text-[13px] text-muted">{search ? t('no_matches') : t(TITLES[entity].empty)}</p>
         ) : (
           <ul className="max-h-[46vh] space-y-1 overflow-y-auto">
             {filtered.map((i) => (
@@ -180,40 +182,40 @@ export function EntityPicker({
       <Modal
         open={creating}
         onClose={() => setCreating(false)}
-        title={TITLES[entity].create}
+        title={t(TITLES[entity].create)}
         footer={
           <>
             <button type="button" className="btn-ghost flex-1" onClick={() => setCreating(false)}>
-              Cancel
+              {t('cancel')}
             </button>
             <button type="button" className="btn-primary flex-1" onClick={() => void create()} disabled={saving || !draft.name?.trim()}>
               {saving ? <Spinner /> : null}
-              Save
+              {t('save')}
             </button>
           </>
         }
       >
-        <Field label="Name" required>
+        <Field label={t('name')} required>
           <TextInput value={draft.name ?? ''} onChange={(v) => setDraft((d) => ({ ...d, name: v }))} autoFocus />
         </Field>
-        <Field label="Phone">
+        <Field label={t('phone')}>
           <TextInput value={draft.phone ?? ''} onChange={(v) => setDraft((d) => ({ ...d, phone: v }))} inputMode="tel" type="tel" />
         </Field>
-        <Field label="WhatsApp" hint="Leave empty to reuse the phone number">
+        <Field label={t('whatsapp')}>
           <TextInput value={draft.whatsapp ?? ''} onChange={(v) => setDraft((d) => ({ ...d, whatsapp: v }))} inputMode="tel" type="tel" />
         </Field>
 
         {entity === 'customers' ? (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Country">
+              <Field label={t('country')}>
                 <TextInput value={draft.country ?? ''} onChange={(v) => setDraft((d) => ({ ...d, country: v }))} />
               </Field>
-              <Field label="City">
+              <Field label={t('city')}>
                 <TextInput value={draft.city ?? ''} onChange={(v) => setDraft((d) => ({ ...d, city: v }))} />
               </Field>
             </div>
-            <Field label="Customer type">
+            <Field label={t('customer_type')}>
               <Select
                 value={draft.customerType ?? 'New Customer'}
                 onChange={(v) => setDraft((d) => ({ ...d, customerType: v }))}
@@ -225,18 +227,18 @@ export function EntityPicker({
 
         {entity === 'makers' ? (
           <>
-            <Field label="Company / workshop">
+            <Field label={t('company')}>
               <TextInput value={draft.company ?? ''} onChange={(v) => setDraft((d) => ({ ...d, company: v }))} />
             </Field>
-            <Field label="Specialty">
+            <Field label={t('specialty')}>
               <Select
                 value={draft.specialty ?? ''}
                 onChange={(v) => setDraft((d) => ({ ...d, specialty: v }))}
-                placeholder="No specialty"
+                placeholder={t('no_specialty')}
                 options={MAKER_SPECIALTIES.map((s) => ({ value: s, label: s }))}
               />
             </Field>
-            <Field label="Location">
+            <Field label={t('location')}>
               <TextInput value={draft.location ?? ''} onChange={(v) => setDraft((d) => ({ ...d, location: v }))} />
             </Field>
           </>
@@ -244,15 +246,19 @@ export function EntityPicker({
 
         {entity === 'travelers' ? (
           <>
-            <Field label="Frequent route">
-              <Select
-                value={draft.frequentRoute ?? ''}
-                onChange={(v) => setDraft((d) => ({ ...d, frequentRoute: v }))}
-                placeholder="No usual route"
-                options={COMMON_ROUTES.map((r) => ({ value: r, label: r }))}
-              />
+            <Field label={t('frequent_route')}>
+              {settings.destinations.length ? (
+                <Select
+                  value={draft.frequentRoute ?? ''}
+                  onChange={(v) => setDraft((d) => ({ ...d, frequentRoute: v }))}
+                  placeholder={t('no_usual_route')}
+                  options={settings.destinations.map((r) => ({ value: r, label: r }))}
+                />
+              ) : (
+                <TextInput value={draft.frequentRoute ?? ''} onChange={(v) => setDraft((d) => ({ ...d, frequentRoute: v }))} />
+              )}
             </Field>
-            <Field label="ID reference">
+            <Field label={t('id_reference')}>
               <TextInput value={draft.idReference ?? ''} onChange={(v) => setDraft((d) => ({ ...d, idReference: v }))} />
             </Field>
           </>
@@ -272,6 +278,8 @@ export function TagPicker({
   onChange: (tags: string[]) => void;
   suggestions: readonly string[];
 }) {
+  const { t } = useApp();
+  const placeholderText = t('add_tag');
   const [draft, setDraft] = useState('');
   const add = (tag: string) => {
     const t = tag.trim();
@@ -283,15 +291,15 @@ export function TagPicker({
     <div className="space-y-2">
       {value.length ? (
         <ul className="flex flex-wrap gap-1.5">
-          {value.map((t) => (
-            <li key={t}>
+          {value.map((tag) => (
+            <li key={tag}>
               <button
                 type="button"
                 className="chip bg-gold/15 text-gold normal-case tracking-normal"
-                onClick={() => onChange(value.filter((x) => x !== t))}
-                aria-label={`Remove tag ${t}`}
+                onClick={() => onChange(value.filter((x) => x !== tag))}
+                aria-label={t('remove')}
               >
-                {t} ✕
+                {tag} ✕
               </button>
             </li>
           ))}
@@ -301,7 +309,7 @@ export function TagPicker({
         <input
           className="input flex-1"
           value={draft}
-          placeholder="Add a tag"
+          placeholder={placeholderText}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -311,7 +319,7 @@ export function TagPicker({
           }}
         />
         <button type="button" className="btn-ghost btn-sm" onClick={() => add(draft)}>
-          Add
+          {t('add')}
         </button>
       </div>
       <div className="scroll-x">

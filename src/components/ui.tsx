@@ -2,6 +2,7 @@
 
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, Loader2, Search, X } from 'lucide-react';
+import { useApp } from './providers';
 
 export function Card({
   children,
@@ -287,6 +288,8 @@ export function SearchInput({
   placeholder?: string;
   autoFocus?: boolean;
 }) {
+  const { t } = useApp();
+  const label = t('search');
   return (
     <div className="relative">
       <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
@@ -295,8 +298,8 @@ export function SearchInput({
         type="search"
         value={value}
         autoFocus={autoFocus}
-        placeholder={placeholder ?? 'Search'}
-        aria-label={placeholder ?? 'Search'}
+        placeholder={placeholder ?? label}
+        aria-label={placeholder ?? label}
         onChange={(e) => onChange(e.target.value)}
       />
       {value ? (
@@ -304,7 +307,7 @@ export function SearchInput({
           type="button"
           className="absolute end-2 top-1/2 -translate-y-1/2 rounded-lg p-2 text-muted hover:text-ink"
           onClick={() => onChange('')}
-          aria-label="Clear search"
+          aria-label={t('clear_all')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -328,6 +331,7 @@ export function Modal({
   footer?: React.ReactNode;
   wide?: boolean;
 }) {
+  const { t } = useApp();
   const titleId = useId();
 
   useEffect(() => {
@@ -358,7 +362,7 @@ export function Modal({
           <h3 id={titleId} className="text-[16px] font-bold text-ink">
             {title}
           </h3>
-          <button type="button" className="rounded-lg p-2 text-muted hover:text-ink" onClick={onClose} aria-label="Close">
+          <button type="button" className="rounded-lg p-2 text-muted hover:text-ink" onClick={onClose} aria-label={t('close')}>
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -479,6 +483,7 @@ export function useDebouncedValue<T>(value: T, delay = 250): T {
 
 /** Pull-to-refresh for the list screens; a no-op on desktop. */
 export function PullToRefresh({ onRefresh, children }: { onRefresh: () => Promise<void> | void; children: React.ReactNode }) {
+  const { t } = useApp();
   const [pull, setPull] = useState(0);
   const [busy, setBusy] = useState(false);
   const startY = useRef<number | null>(null);
@@ -509,7 +514,7 @@ export function PullToRefresh({ onRefresh, children }: { onRefresh: () => Promis
       {pull > 0 || busy ? (
         <div className="flex items-center justify-center gap-2 py-2 text-[12px] text-muted" style={{ height: busy ? 32 : Math.min(pull, 60) }}>
           {busy ? <Spinner /> : null}
-          {busy ? 'Refreshing…' : pull > 60 ? 'Release to refresh' : 'Pull to refresh'}
+          {busy ? t('refreshing') : pull > 60 ? t('release_to_refresh') : t('pull_to_refresh')}
         </div>
       ) : null}
       {children}

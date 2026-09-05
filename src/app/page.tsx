@@ -7,18 +7,21 @@ import { useApp } from '@/components/providers';
 import { OrderCard, OrderCardSkeleton, StatCard } from '@/components/bits';
 import { Card, CardTitle, EmptyState, ErrorState, PullToRefresh, useMounted } from '@/components/ui';
 import { apiGet, cache } from '@/lib/client';
-import { dubaiClock, dubaiGreeting, dubaiLong, dubaiTimelineStamp, dubaiWeekday } from '@/lib/date';
+import { dubaiClock, dubaiHour, dubaiLong, dubaiTimelineStamp, dubaiWeekday } from '@/lib/date';
 import { formatMoney, formatWeight } from '@/lib/num';
 import type { Dashboard } from '@/lib/insights';
 
 const CACHE_KEY = 'dashboard';
 
 export default function HomePage() {
-  const { user, settings, money, toast } = useApp();
+  const { user, settings, toast, t, lang } = useApp();
   const mounted = useMounted();
   const [data, setData] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const greeting = t(
+    mounted && dubaiHour() < 12 ? 'greeting_morning' : mounted && dubaiHour() < 17 ? 'greeting_afternoon' : 'greeting_evening',
+  );
 
   const load = useCallback(async () => {
     try {
@@ -48,18 +51,18 @@ export default function HomePage() {
     <PullToRefresh
       onRefresh={async () => {
         await load();
-        toast('Up to date', 'info');
+        toast(t('up_to_date'), 'info');
       }}
     >
       <div className="space-y-4">
         <header>
           <p className="text-[13px] text-muted">
-            {mounted ? `${dubaiGreeting()}, ` : ''}
+            {mounted ? `${greeting}، ` : ''}
             {user.displayName ?? user.username}
           </p>
-          <h2 className="text-[19px] font-extrabold text-ink">{mounted ? dubaiWeekday() : '—'}</h2>
+          <h2 className="text-[19px] font-extrabold text-ink">{mounted ? dubaiWeekday(new Date(), lang) : '—'}</h2>
           <p className="num text-[13px] text-muted">
-            {mounted ? `${dubaiLong()} · ${dubaiClock()} · Dubai` : '—'}
+            {mounted ? `${dubaiLong(new Date(), lang)} · ${dubaiClock()} · ${t('dubai')}` : '—'}
           </p>
         </header>
 
@@ -71,9 +74,9 @@ export default function HomePage() {
           >
             <AlertTriangle className="h-6 w-6 shrink-0 text-st-overdue" />
             <div className="min-w-0 flex-1">
-              <p className="text-[14px] font-extrabold uppercase tracking-wide text-st-overdue">🚨 Action Required</p>
+              <p className="text-[14px] font-extrabold uppercase tracking-wide text-st-overdue">🚨 {t('action_required')}</p>
               <p className="text-[13px] text-ink">
-                {cards.overdue} {cards.overdue === 1 ? 'order is' : 'orders are'} overdue
+                {cards.overdue === 1 ? t('order_overdue_1') : t('orders_overdue_n', { n: cards.overdue })}
               </p>
             </div>
             <ChevronRight className="h-5 w-5 shrink-0 text-st-overdue" />
@@ -81,38 +84,38 @@ export default function HomePage() {
         ) : cards ? (
           <div className="flex items-center gap-3 rounded-card border border-ok/40 bg-ok/10 p-4">
             <CheckCircle2 className="h-6 w-6 shrink-0 text-ok" />
-            <p className="text-[14px] font-bold text-ok">✅ No overdue orders — everything is on schedule</p>
+            <p className="text-[14px] font-bold text-ok">✅ {t('no_overdue')}</p>
           </div>
         ) : null}
 
         {loading && !data ? (
           <DashboardSkeleton />
         ) : error ? (
-          <ErrorState text="Could not load the dashboard." onRetry={() => void load()} />
+          <ErrorState text={t('could_not_load_dashboard')} onRetry={() => void load()} />
         ) : cards ? (
           <>
-            <section aria-label="Dashboard totals" className="grid grid-cols-2 gap-2.5">
-              <StatCard label="Active Orders" value={String(cards.activeOrders)} href="/orders?quick=active" tone="gold" />
-              <StatCard label="Overdue" value={`🔴 ${cards.overdue}`} href="/orders?quick=overdue" tone="bad" />
-              <StatCard label="Ready" value={String(cards.ready)} href="/orders?quick=ready" tone="ok" />
-              <StatCard label="With Travelers" value={String(cards.withTravelers)} href="/orders?quick=traveler" tone="info" />
-              <StatCard label="With Makers" value={String(cards.withMakers)} href="/orders?quick=maker" tone="warn" />
-              <StatCard label="Arrived" value={String(cards.arrived)} href="/orders?quick=arrived" />
-              <StatCard label="Delivered Today" value={String(cards.deliveredToday)} href="/orders?quick=delivered" tone="ok" />
+            <section aria-label={t('summary')} className="grid grid-cols-2 gap-2.5">
+              <StatCard label={t('card_active')} value={String(cards.activeOrders)} href="/orders?quick=active" tone="gold" />
+              <StatCard label={t('card_overdue')} value={`🔴 ${cards.overdue}`} href="/orders?quick=overdue" tone="bad" />
+              <StatCard label={t('card_ready')} value={String(cards.ready)} href="/orders?quick=ready" tone="ok" />
+              <StatCard label={t('card_travelers')} value={String(cards.withTravelers)} href="/orders?quick=traveler" tone="info" />
+              <StatCard label={t('card_makers')} value={String(cards.withMakers)} href="/orders?quick=maker" tone="warn" />
+              <StatCard label={t('card_arrived')} value={String(cards.arrived)} href="/orders?quick=arrived" />
+              <StatCard label={t('card_delivered_today')} value={String(cards.deliveredToday)} href="/orders?quick=delivered" tone="ok" />
               <StatCard
-                label="Balance To Collect"
+                label={t('card_balance')}
                 value={`${settings.currency} ${formatMoney(cards.outstandingBalanceFils)}`}
                 href="/orders?quick=balance"
                 tone={cards.outstandingBalanceFils > 0 ? 'bad' : 'ok'}
               />
               <div className="col-span-2">
-                <StatCard label="Expected Gold Weight" value={`${formatWeight(cards.expectedGoldMg)} g`} tone="gold" hint="Across all active orders" />
+                <StatCard label={t('card_gold')} value={`${formatWeight(cards.expectedGoldMg)} g`} tone="gold" hint={t('card_gold_hint')} />
               </div>
             </section>
 
             {data.urgent.length ? (
               <section>
-                <CardTitle title="Urgent Orders" subtitle="Overdue first — automatically" icon={<AlertTriangle className="h-4 w-4" />} />
+                <CardTitle title={t('urgent_orders')} subtitle={t('urgent_orders_hint')} icon={<AlertTriangle className="h-4 w-4" />} />
                 <div className="space-y-2.5">
                   {data.urgent.map((o) => (
                     <OrderCard key={o.id} order={o} currency={settings.currency} />
@@ -123,7 +126,7 @@ export default function HomePage() {
 
             {data.dueTodayOrders.length ? (
               <section>
-                <CardTitle title="Today's Orders" subtitle="Due for delivery today" />
+                <CardTitle title={t('todays_orders')} subtitle={t('todays_orders_hint')} />
                 <div className="space-y-2.5">
                   {data.dueTodayOrders.map((o) => (
                     <OrderCard key={o.id} order={o} currency={settings.currency} />
@@ -135,12 +138,12 @@ export default function HomePage() {
             {data.followUps.length ? (
               <Card>
                 <CardTitle
-                  title="Today's Follow-Up"
-                  subtitle={`${data.followUps.length} ${data.followUps.length === 1 ? 'action' : 'actions'} need attention`}
+                  title={t('todays_followup')}
+                  subtitle={t('followup_count', { n: data.followUps.length })}
                   icon={<ClipboardList className="h-4 w-4" />}
                   action={
                     <Link href="/follow-up" className="text-[12px] font-bold text-gold">
-                      View all
+                      {t('view_all')}
                     </Link>
                   }
                 />
@@ -165,11 +168,11 @@ export default function HomePage() {
             {data.notifications.length ? (
               <Card>
                 <CardTitle
-                  title="Notifications"
+                  title={t('notifications')}
                   icon={<Bell className="h-4 w-4" />}
                   action={
                     <Link href="/notifications" className="text-[12px] font-bold text-gold">
-                      View all
+                      {t('view_all')}
                     </Link>
                   }
                 />
@@ -192,7 +195,7 @@ export default function HomePage() {
             ) : null}
 
             <Card>
-              <CardTitle title="Recent Activity" subtitle="Dubai time" />
+              <CardTitle title={t('recent_activity')} subtitle={t('recent_activity_hint')} />
               {data.activity.length ? (
                 <ul className="divide-y divide-line/70">
                   {data.activity.map((a) => (
@@ -214,18 +217,18 @@ export default function HomePage() {
                   ))}
                 </ul>
               ) : (
-                <EmptyState title="No activity yet" text="Order updates will appear here as your day goes on." icon="🕘" />
+                <EmptyState title={t('no_activity')} text={t('no_activity_hint')} icon="🕘" />
               )}
             </Card>
 
             {cards.activeOrders === 0 ? (
               <EmptyState
-                title="No Orders Yet"
-                text="Create your first gold order to start tracking it."
+                title={t('empty_orders_title')}
+                text={t('empty_orders_text')}
                 icon="🥇"
                 action={
                   <Link href="/orders/new" className="btn-primary">
-                    + New Order
+                    + {t('new_order')}
                   </Link>
                 }
               />
@@ -234,7 +237,7 @@ export default function HomePage() {
         ) : null}
 
         <p className="pb-2 text-center text-[11px] text-muted">
-          All dates and times use Asia/Dubai · {money(0).split(' ')[0]} · weights in grams
+          {t('dashboard_footer', { currency: settings.currency })}
         </p>
       </div>
     </PullToRefresh>

@@ -26,10 +26,10 @@ import { ActionSheet, Card, CardTitle, ErrorState, Modal, Skeleton } from '@/com
 import { apiGet, cache, whatsappLink } from '@/lib/client';
 import { countdownLabel, diffDays, dubaiShort } from '@/lib/date';
 import { formatMoney, formatWeight, phoneDigits } from '@/lib/num';
-import { allowedTransitions, compareWeight, warningsFor, WEIGHT_VERDICT_LABEL } from '@/lib/calc';
+import { allowedTransitions, compareWeight, warningsFor, WEIGHT_VERDICT_KEY } from '@/lib/calc';
 import {
   STATUS_ICON,
-  STATUS_LABEL,
+  STATUS_KEY,
   isClosed,
   type GoldExchange,
   type OrderMedia,
@@ -39,6 +39,7 @@ import {
   type Payment,
   type StatusEvent,
 } from '@/lib/types';
+import type { DictKey } from '@/i18n/dict';
 
 interface Bundle {
   order: OrderView;
@@ -53,17 +54,18 @@ interface Bundle {
   timeline: StatusEvent[];
 }
 
+/** Templates are prefilled only — the shop presses send inside WhatsApp itself. */
 const WHATSAPP_TEMPLATES = [
-  { key: 'received', label: 'Order received', build: (o: OrderView) => `Hello ${o.customerName}, your order ${o.orderNumber} (${o.productName}, ${o.karat}) has been confirmed.` },
-  { key: 'ready', label: 'Order ready', build: (o: OrderView) => `Hello ${o.customerName}, your gold order ${o.orderNumber} is ready.` },
-  { key: 'arrived', label: 'Order arrived', build: (o: OrderView) => `Hello ${o.customerName}, your order ${o.orderNumber} has arrived${o.destination ? ` in ${o.destination}` : ''}.` },
-  { key: 'balance', label: 'Balance reminder', build: (o: OrderView, currency: string) => `Hello ${o.customerName}, the remaining balance on order ${o.orderNumber} is ${currency} ${formatMoney(o.remainingBalanceFils)}.` },
-  { key: 'collect', label: 'Ready for collection', build: (o: OrderView) => `Hello ${o.customerName}, order ${o.orderNumber} is ready for collection.` },
-];
+  { key: 'received', label: 'wa_received', msg: 'wa_msg_received' },
+  { key: 'ready', label: 'wa_ready', msg: 'wa_msg_ready' },
+  { key: 'arrived', label: 'wa_arrived', msg: 'wa_msg_arrived' },
+  { key: 'balance', label: 'wa_balance', msg: 'wa_msg_balance' },
+  { key: 'collect', label: 'wa_collect', msg: 'wa_msg_collect' },
+] as const satisfies readonly { key: string; label: DictKey; msg: DictKey }[];
 
 export default function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { settings, toast, can } = useApp();
+  const { settings, toast, can, t } = useApp();
   const router = useRouter();
 
   const [bundle, setBundle] = useState<Bundle | null>(null);
@@ -120,9 +122,19 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   }, [order, bundle, weight]);
 
   if (loading && !bundle) return <DetailSkeleton />;
-  if (error || !bundle || !order) return <ErrorState text="Could not load this order." onRetry={() => void load()} />;
+  if (error || !bundle || !order) return <ErrorState text={t('could_not_load_order')} onRetry={() => void load()} />;
 
   const patchOrder = (patch: Partial<OrderView>) => setBundle((b) => (b ? { ...b, order: { ...b.order, ...patch } } : b));
+  const countdown = countdownLabel(order.expectedDeliveryDate);
+  const waMessage = (key: DictKey) =>
+    t(key, {
+      name: order.customerName,
+      number: order.orderNumber,
+      product: order.productName,
+      karat: order.karat,
+      amount: `${settings.currency} ${formatMoney(order.remainingBalanceFils)}`,
+      where: order.destination ? ` — ${order.destination}` : '',
+    });
   const phone = phoneDigits(order.customerPhone);
   const whatsapp = phoneDigits(order.customerWhatsapp ?? order.customerPhone);
   const transitions = allowedTransitions(order.status);
@@ -161,50 +173,50 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <div className="scroll-x no-print">
         {phone ? (
           <a href={`tel:${phone}`} className="btn-ghost btn-sm shrink-0">
-            <Phone className="h-4 w-4" /> Call
+            <Phone className="h-4 w-4" /> {t('call')}
           </a>
         ) : null}
         {whatsapp ? (
           <button type="button" className="btn-ghost btn-sm shrink-0" onClick={() => setWhatsappOpen(true)}>
-            <MessageCircle className="h-4 w-4" /> WhatsApp
+            <MessageCircle className="h-4 w-4" /> {t('whatsapp')}
           </button>
         ) : null}
         <button type="button" className="btn-ghost btn-sm shrink-0" onClick={() => setSheet('actions')}>
-          <Wallet className="h-4 w-4" /> Quick actions
+          <Wallet className="h-4 w-4" /> {t('quick_actions')}
         </button>
         <Link href={`/orders/${order.id}/edit`} className="btn-ghost btn-sm shrink-0">
-          <Pencil className="h-4 w-4" /> Edit
+          <Pencil className="h-4 w-4" /> {t('edit')}
         </Link>
         <Link href={`/print/${order.id}`} className="btn-ghost btn-sm shrink-0">
-          <Printer className="h-4 w-4" /> Print
+          <Printer className="h-4 w-4" /> {t('print')}
         </Link>
         <button
           type="button"
           className="btn-ghost btn-sm shrink-0"
           onClick={async () => {
-            const text = `${order.orderNumber} · ${order.customerName} · ${order.productName} ${order.karat} · ${STATUS_LABEL[order.status]}`;
+            const text = `${order.orderNumber} · ${order.customerName} · ${order.productName} ${order.karat} · ${t(STATUS_KEY[order.status])}`;
             if (navigator.share) {
               await navigator.share({ title: order.orderNumber, text }).catch(() => undefined);
             } else {
               await navigator.clipboard?.writeText(text);
-              toast('Order summary copied');
+              toast(t('summary_copied'));
             }
           }}
         >
-          <Share2 className="h-4 w-4" /> Share
+          <Share2 className="h-4 w-4" /> {t('share')}
         </button>
       </div>
 
       {warnings.length ? (
         <Card className="border-warn/40">
-          <CardTitle title="Smart Warnings" icon={<AlertTriangle className="h-4 w-4" />} />
+          <CardTitle title={t('smart_warnings')} icon={<AlertTriangle className="h-4 w-4" />} />
           <ul className="space-y-1.5">
             {warnings.map((w) => (
               <li key={w.code} className="flex items-start gap-2 text-[13px]">
                 <span aria-hidden className={w.severity === 'high' ? 'text-bad' : w.severity === 'medium' ? 'text-warn' : 'text-muted'}>
                   {w.severity === 'high' ? '🔴' : w.severity === 'medium' ? '🟠' : '⚪'}
                 </span>
-                <span className="text-ink">{w.text}</span>
+                <span className="text-ink">{t(w.key)}</span>
               </li>
             ))}
           </ul>
@@ -217,40 +229,40 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* order + delivery countdown */}
       <Card>
-        <CardTitle title="Order" />
+        <CardTitle title={t('order')} />
         <dl className="text-[13px]">
-          <Row label="Order number" value={order.orderNumber} mono />
-          {order.referenceNo ? <Row label="Reference" value={order.referenceNo} /> : null}
-          <Row label="Order date" value={dubaiShort(order.orderDate)} />
-          <Row label="Style" value={order.style ?? '—'} />
-          <Row label="Expected ready" value={dubaiShort(order.expectedReadyDate)} />
-          <Row label="Expected delivery" value={dubaiShort(order.expectedDeliveryDate)} />
+          <Row label={t('order_number')} value={order.orderNumber} mono />
+          {order.referenceNo ? <Row label={t('reference')} value={order.referenceNo} /> : null}
+          <Row label={t('order_date')} value={dubaiShort(order.orderDate)} />
+          <Row label={t('style')} value={order.style ?? '—'} />
+          <Row label={t('expected_ready')} value={dubaiShort(order.expectedReadyDate)} />
+          <Row label={t('expected_delivery')} value={dubaiShort(order.expectedDeliveryDate)} />
           <Row
-            label="Countdown"
-            value={countdownLabel(order.expectedDeliveryDate)}
+            label={t('countdown')}
+            value={countdown}
             tone={order.isOverdue ? 'bad' : order.urgency === 'due_today' || order.urgency === 'due_tomorrow' ? 'warn' : 'default'}
           />
-          {order.destination ? <Row label="Destination" value={order.destination} /> : null}
-          {order.cancelReason ? <Row label="Cancelled" value={order.cancelReason} tone="bad" /> : null}
+          {order.destination ? <Row label={t('destination')} value={order.destination} /> : null}
+          {order.cancelReason ? <Row label={t('status_cancelled')} value={order.cancelReason} tone="bad" /> : null}
         </dl>
       </Card>
 
       <Card>
         <CardTitle
-          title="Customer"
+          title={t('customer')}
           action={
             <Link href={`/customers/${order.customerId}`} className="text-[12px] font-bold text-gold">
-              Profile
+              {t('profile')}
             </Link>
           }
         />
         <dl className="text-[13px]">
-          <Row label="Name" value={order.customerName} />
-          <Row label="Phone" value={order.customerPhone ?? '—'} mono />
-          <Row label="WhatsApp" value={order.customerWhatsapp ?? '—'} mono />
-          <Row label="Type" value={String(bundle.customer?.customerType ?? '—')} />
+          <Row label={t('name')} value={order.customerName} />
+          <Row label={t('phone')} value={order.customerPhone ?? '—'} mono />
+          <Row label={t('whatsapp')} value={order.customerWhatsapp ?? '—'} mono />
+          <Row label={t('customer_type')} value={String(bundle.customer?.customerType ?? '—')} />
           <Row
-            label="Location"
+            label={t('location')}
             value={[bundle.customer?.city, bundle.customer?.country].filter(Boolean).join(', ') || '—'}
           />
         </dl>
@@ -258,10 +270,10 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* weight: expected vs actual */}
       <Card>
-        <CardTitle title="Weight" subtitle="Expected vs actual" />
+        <CardTitle title={t('weight')} subtitle={t('weight_hint')} />
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl bg-surface2 p-3">
-            <p className="label">Expected</p>
+            <p className="label">{t('expected')}</p>
             <p className="num mt-1 text-[18px] font-extrabold text-ink">{formatWeight(order.expectedWeightMg)} g</p>
             {order.minimumWeightMg !== null && order.maximumWeightMg !== null ? (
               <p className="num mt-0.5 text-[11px] text-muted">
@@ -270,7 +282,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
             ) : null}
           </div>
           <div className="rounded-xl bg-surface2 p-3">
-            <p className="label">Actual</p>
+            <p className="label">{t('actual')}</p>
             <p className="num mt-1 text-[18px] font-extrabold text-ink">
               {order.actualWeightMg === null ? '—' : `${formatWeight(order.actualWeightMg)} g`}
             </p>
@@ -281,7 +293,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 }`}
               >
                 {weight.differenceMg >= 0 ? '+' : '−'}
-                {formatWeight(Math.abs(weight.differenceMg))} g · {WEIGHT_VERDICT_LABEL[weight.verdict]}
+                {formatWeight(Math.abs(weight.differenceMg))} g · {t(WEIGHT_VERDICT_KEY[weight.verdict])}
               </p>
             ) : null}
           </div>
@@ -290,28 +302,28 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* price */}
       <Card>
-        <CardTitle title="Price" />
+        <CardTitle title={t('price')} />
         <dl className="text-[13px]">
           <Row
-            label="Gold rate"
+            label={t('gold_rate')}
             value={
               order.goldRateMode === 'manual'
-                ? 'Manual value'
+                ? t('manual')
                 : `${settings.currency} ${formatMoney(order.goldRateFilsPerGram)} / g`
             }
             mono
           />
           <Row
-            label="Making charge"
+            label={t('making_charge')}
             value={`${settings.currency} ${formatMoney(order.makingChargeFils)}${order.makingChargeMode === 'per_gram' ? ' / g' : ''}`}
             mono
           />
-          {order.otherChargesFils ? <Row label="Other charges" value={`${settings.currency} ${formatMoney(order.otherChargesFils)}`} mono /> : null}
-          {order.discountFils ? <Row label="Discount" value={`− ${settings.currency} ${formatMoney(order.discountFils)}`} mono /> : null}
-          {order.vatBp ? <Row label="VAT" value={`${order.vatBp / 100}%`} mono /> : null}
-          <Row label="Total" value={`${settings.currency} ${formatMoney(order.totalAmountFils)}`} mono strong />
+          {order.otherChargesFils ? <Row label={t('other_charges')} value={`${settings.currency} ${formatMoney(order.otherChargesFils)}`} mono /> : null}
+          {order.discountFils ? <Row label={t('discount')} value={`− ${settings.currency} ${formatMoney(order.discountFils)}`} mono /> : null}
+          {order.vatBp ? <Row label={t('vat')} value={`${order.vatBp / 100}%`} mono /> : null}
+          <Row label={t('total')} value={`${settings.currency} ${formatMoney(order.totalAmountFils)}`} mono strong />
           {can('finance.view') && order.makerCostFils ? (
-            <Row label="Maker cost" value={`${settings.currency} ${formatMoney(order.makerCostFils)}`} mono />
+            <Row label={t('maker_cost')} value={`${settings.currency} ${formatMoney(order.makerCostFils)}`} mono />
           ) : null}
         </dl>
       </Card>
@@ -338,36 +350,36 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       {order.makerId || order.makerNotes ? (
         <Card>
-          <CardTitle title="Maker" />
+          <CardTitle title={t('maker')} />
           <dl className="text-[13px]">
-            <Row label="Maker" value={order.makerName ?? '—'} />
-            <Row label="Company" value={String(bundle.maker?.company ?? '—')} />
-            <Row label="Sent to maker" value={dubaiShort(order.sentToMakerDate)} />
-            <Row label="Expected ready" value={dubaiShort(order.expectedReadyDate)} />
-            <Row label="Reference" value={order.makerReference ?? '—'} />
-            {order.qualityCheck ? <Row label="Quality check" value={order.qualityCheck} /> : null}
-            {order.makerNotes ? <Row label="Notes" value={order.makerNotes} /> : null}
+            <Row label={t('maker')} value={order.makerName ?? '—'} />
+            <Row label={t('company')} value={String(bundle.maker?.company ?? '—')} />
+            <Row label={t('sent_to_maker')} value={dubaiShort(order.sentToMakerDate)} />
+            <Row label={t('expected_ready')} value={dubaiShort(order.expectedReadyDate)} />
+            <Row label={t('reference')} value={order.makerReference ?? '—'} />
+            {order.qualityCheck ? <Row label={t('quality_check')} value={order.qualityCheck} /> : null}
+            {order.makerNotes ? <Row label={t('notes')} value={order.makerNotes} /> : null}
           </dl>
         </Card>
       ) : null}
 
       {order.travelerId ? (
         <Card>
-          <CardTitle title="Traveler" />
+          <CardTitle title={t('traveler')} />
           <dl className="text-[13px]">
-            <Row label="Traveler" value={order.travelerName ?? '—'} />
-            <Row label="Destination" value={order.destination ?? '—'} />
-            <Row label="Departure" value={dubaiShort((bundle.shipment?.departureDate as string) ?? null)} />
-            <Row label="Expected arrival" value={dubaiShort((bundle.shipment?.expectedArrival as string) ?? null)} />
-            <Row label="Flight" value={String(bundle.shipment?.flightNumber ?? '—')} />
-            <Row label="Airline" value={String(bundle.shipment?.airline ?? '—')} />
-            <Row label="Package ref" value={String(bundle.shipment?.packageRef ?? '—')} />
+            <Row label={t('traveler')} value={order.travelerName ?? '—'} />
+            <Row label={t('destination')} value={order.destination ?? '—'} />
+            <Row label={t('departure')} value={dubaiShort((bundle.shipment?.departureDate as string) ?? null)} />
+            <Row label={t('expected_arrival')} value={dubaiShort((bundle.shipment?.expectedArrival as string) ?? null)} />
+            <Row label={t('flight')} value={String(bundle.shipment?.flightNumber ?? '—')} />
+            <Row label={t('airline')} value={String(bundle.shipment?.airline ?? '—')} />
+            <Row label={t('package_ref')} value={String(bundle.shipment?.packageRef ?? '—')} />
           </dl>
         </Card>
       ) : null}
 
       <Card>
-        <CardTitle title="Media" subtitle="Photos and videos" icon={<Camera className="h-4 w-4" />} />
+        <CardTitle title={t('media')} subtitle={t('media_hint')} icon={<Camera className="h-4 w-4" />} />
         <MediaGallery
           orderId={order.id}
           media={bundle.media}
@@ -383,34 +395,34 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
 
       {order.status === 'delivered' ? (
         <Card className="border-ok/50">
-          <CardTitle title="✅ Order Delivered" subtitle="Final summary" />
+          <CardTitle title={`✅ ${t('order_delivered_title')}`} subtitle={t('final_summary')} />
           <dl className="text-[13px]">
-            <Row label="Delivered" value={dubaiShort(order.deliveredDate)} />
-            <Row label="Received by" value={order.receivedBy ?? '—'} />
-            <Row label="Delivery method" value={order.deliveryMethod ?? '—'} />
-            <Row label="Expected weight" value={`${formatWeight(order.expectedWeightMg)} g`} mono />
+            <Row label={t('status_delivered')} value={dubaiShort(order.deliveredDate)} />
+            <Row label={t('received_by')} value={order.receivedBy ?? '—'} />
+            <Row label={t('delivery_method')} value={order.deliveryMethod ?? '—'} />
+            <Row label={t('expected_weight')} value={`${formatWeight(order.expectedWeightMg)} g`} mono />
             <Row
-              label="Actual weight"
+              label={t('actual_weight')}
               value={order.actualWeightMg === null ? '—' : `${formatWeight(order.actualWeightMg)} g`}
               mono
             />
-            <Row label="Total" value={`${settings.currency} ${formatMoney(order.totalAmountFils)}`} mono />
-            <Row label="Paid" value={`${settings.currency} ${formatMoney(order.totalPaidFils)}`} mono />
+            <Row label={t('total')} value={`${settings.currency} ${formatMoney(order.totalAmountFils)}`} mono />
+            <Row label={t('total_paid')} value={`${settings.currency} ${formatMoney(order.totalPaidFils)}`} mono />
             <Row
-              label="Balance"
+              label={t('balance')}
               value={`${settings.currency} ${formatMoney(order.remainingBalanceFils)}`}
               mono
               tone={order.remainingBalanceFils > 0 ? 'bad' : 'ok'}
             />
             {order.deliveredDate ? (
-              <Row label="Duration" value={`${Math.max(diffDays(order.deliveredDate, order.orderDate), 0)} days`} />
+              <Row label={t('duration')} value={`${Math.max(diffDays(order.deliveredDate, order.orderDate), 0)} ${t('days')}`} />
             ) : null}
           </dl>
         </Card>
       ) : null}
 
       <Card>
-        <CardTitle title="Timeline" subtitle="Every status change, kept forever" />
+        <CardTitle title={t('timeline')} subtitle={t('timeline_hint')} />
         <Timeline events={bundle.timeline} currency={settings.currency} />
       </Card>
 
@@ -423,7 +435,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         <div className="fixed inset-x-0 bottom-[72px] z-30 mx-auto max-w-2xl px-4 no-print">
           <button type="button" className="btn-primary w-full shadow-pop" onClick={() => setSheet('status')}>
             <ArrowRightLeft className="h-4 w-4" />
-            Update Status
+            {t('update_status')}
           </button>
         </div>
       ) : null}
@@ -431,11 +443,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <ActionSheet
         open={sheet === 'status'}
         onClose={() => setSheet(null)}
-        title="Update status"
+        title={t('update_status')}
         actions={transitions.map((s) => ({
           key: s,
-          label: `${STATUS_ICON[s]} ${s === 'maker' && order.status === 'ready' ? 'Return to Maker' : STATUS_LABEL[s]}`,
-          hint: s === 'cancelled' ? 'A reason is required' : undefined,
+          label: `${STATUS_ICON[s]} ${s === 'maker' && order.status === 'ready' ? t('return_to_maker') : t(STATUS_KEY[s])}`,
+          hint: s === 'cancelled' ? t('a_reason_required') : undefined,
           danger: s === 'cancelled',
           onSelect: () => setStatusTarget(s),
         }))}
@@ -444,11 +456,11 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
       <ActionSheet
         open={sheet === 'actions'}
         onClose={() => setSheet(null)}
-        title="Quick actions"
+        title={t('quick_actions')}
         actions={[
-          { key: 'edit', label: 'Edit order', icon: <Pencil className="h-4 w-4" />, onSelect: () => router.push(`/orders/${order.id}/edit`) },
-          { key: 'print', label: 'Print documents', icon: <Printer className="h-4 w-4" />, onSelect: () => router.push(`/print/${order.id}`) },
-          { key: 'customer', label: 'Open customer profile', icon: <StickyNote className="h-4 w-4" />, onSelect: () => router.push(`/customers/${order.customerId}`) },
+          { key: 'edit', label: t('edit_order'), icon: <Pencil className="h-4 w-4" />, onSelect: () => router.push(`/orders/${order.id}/edit`) },
+          { key: 'print', label: t('print_documents'), icon: <Printer className="h-4 w-4" />, onSelect: () => router.push(`/print/${order.id}`) },
+          { key: 'customer', label: t('open_customer'), icon: <StickyNote className="h-4 w-4" />, onSelect: () => router.push(`/customers/${order.customerId}`) },
         ]}
       />
 
@@ -465,20 +477,20 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
         }}
       />
 
-      <Modal open={whatsappOpen} onClose={() => setWhatsappOpen(false)} title="WhatsApp customer">
-        <p className="text-[12px] text-muted">Choose a template. Nothing is sent until you press send in WhatsApp.</p>
+      <Modal open={whatsappOpen} onClose={() => setWhatsappOpen(false)} title={t('whatsapp_customer')}>
+        <p className="text-[12px] text-muted">{t('whatsapp_hint')}</p>
         <div className="space-y-2">
-          {WHATSAPP_TEMPLATES.map((t) => (
+          {WHATSAPP_TEMPLATES.map((tpl) => (
             <a
-              key={t.key}
-              href={whatsappLink(whatsapp, t.build(order, settings.currency))}
+              key={tpl.key}
+              href={whatsappLink(whatsapp, waMessage(tpl.msg))}
               target="_blank"
               rel="noreferrer"
               className="block rounded-xl border border-line px-3 py-2.5 text-[13px] transition hover:border-gold/60"
               onClick={() => setWhatsappOpen(false)}
             >
-              <span className="block font-semibold text-ink">{t.label}</span>
-              <span className="block text-[12px] text-muted">{t.build(order, settings.currency)}</span>
+              <span className="block font-semibold text-ink">{t(tpl.label)}</span>
+              <span className="block text-[12px] text-muted">{waMessage(tpl.msg)}</span>
             </a>
           ))}
         </div>

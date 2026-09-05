@@ -3,6 +3,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, Undo2, XCircle } from 'lucide-react';
 import { DEFAULT_SETTINGS, type AppSettings, type Permission, type SettingsPatch } from '@/lib/types';
+import { dirOf, translate, type DictKey, type Lang } from '@/i18n/dict';
 import { apiGet, apiWrite, flushOutbox, onOutboxChange, outbox } from '@/lib/client';
 import { formatMoney, formatWeight } from '@/lib/num';
 import { Modal } from './ui';
@@ -34,6 +35,10 @@ export interface SessionUser {
 
 interface AppCtx {
   settings: AppSettings;
+  lang: Lang;
+  dir: 'rtl' | 'ltr';
+  /** `t('days_late', { n: 3 })` — the whole UI reads through this. */
+  t: (key: DictKey, vars?: Record<string, string | number>) => string;
   setSettings: (patch: SettingsPatch) => Promise<void>;
   user: SessionUser | null;
   setUser: (u: SessionUser | null) => void;
@@ -112,6 +117,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     void refreshAuth();
   }, [refreshAuth]);
 
+  const lang = settings.language;
+  const dir = dirOf(lang);
+  const t = useCallback(
+    (key: DictKey, vars?: Record<string, string | number>) => translate(lang, key, vars),
+    [lang],
+  );
+
+  /* --------------------------------------------- language + direction */
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = dir;
+  }, [lang, dir]);
+
   /* ---------------------------------------------------- theme */
   useEffect(() => {
     const apply = () => {
@@ -138,9 +156,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const syncNow = useCallback(async () => {
     const r = await flushOutbox();
     setPending(outbox.size());
-    if (r.sent > 0) pushToast(`${r.sent} queued ${r.sent === 1 ? 'change' : 'changes'} synced`, 'ok');
-    if (r.failed > 0) pushToast(`${r.failed} queued ${r.failed === 1 ? 'change' : 'changes'} were rejected`, 'error');
-  }, [pushToast]);
+    if (r.sent > 0) pushToast(translate(lang, 'synced_n', { n: r.sent }), 'ok');
+    if (r.failed > 0) pushToast(translate(lang, 'rejected_n', { n: r.failed }), 'error');
+  }, [pushToast, lang]);
 
   useEffect(() => {
     const goOnline = async () => {
@@ -188,6 +206,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     () => ({
       settings,
       setSettings,
+      lang,
+      dir,
+      t,
       user,
       setUser,
       needsSetup,
@@ -202,7 +223,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refreshAuth,
       syncNow,
     }),
-    [settings, setSettings, user, needsSetup, authReady, online, pending, pushToast, confirm, refreshAuth, syncNow],
+    [settings, setSettings, lang, dir, t, user, needsSetup, authReady, online, pending, pushToast, confirm, refreshAuth, syncNow],
   );
 
   const canConfirm =
@@ -237,7 +258,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 }}
               >
                 <Undo2 className="h-3.5 w-3.5" />
-                Undo
+                {t('undo')}
               </button>
             ) : null}
           </div>
@@ -262,7 +283,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 setConfirmState(null);
               }}
             >
-              Cancel
+              {t('cancel')}
             </button>
             <button
               type="button"
@@ -273,7 +294,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 setConfirmState(null);
               }}
             >
-              {confirmState?.confirmLabel ?? 'Confirm'}
+              {confirmState?.confirmLabel ?? t('confirm')}
             </button>
           </>
         }
@@ -286,7 +307,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ) : null}
         {confirmState?.requirePin ? (
           <label className="block">
-            <span className="label mb-1.5">Enter your PIN</span>
+            <span className="label mb-1.5">{t('enter_pin')}</span>
             <input
               className="input num"
               inputMode="numeric"
@@ -299,7 +320,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         ) : null}
         {confirmState?.requireReason ? (
           <label className="block">
-            <span className="label mb-1.5">Reason (saved to the audit log)</span>
+            <span className="label mb-1.5">{t('edit_reason')}</span>
             <textarea className="input min-h-[80px]" value={reasonValue} onChange={(e) => setReasonValue(e.target.value)} />
           </label>
         ) : null}

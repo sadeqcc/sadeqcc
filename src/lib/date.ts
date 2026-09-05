@@ -10,7 +10,10 @@ const timeFmt = new Intl.DateTimeFormat('en-GB', {
 });
 const clockFmt = new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: true });
 const weekdayFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, weekday: 'long' });
+const weekdayFmtAr = new Intl.DateTimeFormat('ar', { timeZone: TZ, weekday: 'long' });
 const longFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: '2-digit', month: 'long', year: 'numeric' });
+/* Arabic month names with Latin digits — the figures stay readable at the counter. */
+const longFmtAr = new Intl.DateTimeFormat('ar-u-nu-latn', { timeZone: TZ, day: '2-digit', month: 'long', year: 'numeric' });
 const shortFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, day: '2-digit', month: 'short', year: 'numeric' });
 const hourFmt = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', hour12: false });
 
@@ -28,14 +31,19 @@ export function dubaiClock(d: Date = new Date()): string {
   return clockFmt.format(d);
 }
 
-/** "Saturday" */
-export function dubaiWeekday(d: Date | string = new Date()): string {
-  return weekdayFmt.format(toDate(d));
+/** "Saturday" / "السبت" */
+export function dubaiWeekday(d: Date | string = new Date(), lang: 'ar' | 'en' = 'en'): string {
+  return (lang === 'ar' ? weekdayFmtAr : weekdayFmt).format(toDate(d));
 }
 
-/** "05 September 2026" */
-export function dubaiLong(d: Date | string = new Date()): string {
-  return longFmt.format(toDate(d));
+/** "05 September 2026" / "05 سبتمبر 2026" */
+export function dubaiLong(d: Date | string = new Date(), lang: 'ar' | 'en' = 'en'): string {
+  return (lang === 'ar' ? longFmtAr : longFmt).format(toDate(d));
+}
+
+/** Dubai hour as a number, for greetings. */
+export function dubaiHour(d: Date = new Date()): number {
+  return Number(hourFmt.format(d));
 }
 
 /** "05 Sep 2026" */

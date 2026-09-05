@@ -277,6 +277,7 @@ export const shipmentSchema = z.object({
 });
 
 export const settingsSchema = z.object({
+  language: z.enum(['ar', 'en']).optional(),
   shopName: text(80).optional(),
   shopLogo: z.string().max(400_000).nullable().optional(),
   shopPhone: text(40).optional(),

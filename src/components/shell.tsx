@@ -3,23 +3,23 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChevronLeft, CloudOff, Home, MoreHorizontal, Package, Plus, RefreshCw, Users } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CloudOff, Home, MoreHorizontal, Package, Plus, RefreshCw, Users } from 'lucide-react';
 import { useApp } from './providers';
 import { dubaiClock, dubaiDate } from '@/lib/date';
 import { useMounted } from './ui';
 
 const NAV = [
-  { href: '/', label: 'Home', icon: Home },
-  { href: '/orders', label: 'Orders', icon: Package },
-  { href: '/customers', label: 'Customers', icon: Users },
-  { href: '/more', label: 'More', icon: MoreHorizontal },
+  { href: '/', key: 'nav_home', icon: Home },
+  { href: '/orders', key: 'nav_orders', icon: Package },
+  { href: '/customers', key: 'nav_customers', icon: Users },
+  { href: '/more', key: 'nav_more', icon: MoreHorizontal },
 ] as const;
 
 /** Screens that own their whole viewport — no chrome, no bottom bar. */
 const BARE = ['/login'];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { settings, online, pending, user, authReady, syncNow } = useApp();
+  const { settings, online, pending, user, authReady, syncNow, t, dir } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const mounted = useMounted();
@@ -53,8 +53,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="safe-top sticky top-0 z-40 border-b border-line/70 bg-bg/90 backdrop-blur no-print">
         <div className="flex items-center gap-2 px-4 py-3">
           {pathname !== '/' ? (
-            <button type="button" className="rounded-lg p-2 text-muted hover:text-ink" onClick={() => router.back()} aria-label="Back">
-              <ChevronLeft className="h-5 w-5" />
+            <button type="button" className="rounded-lg p-2 text-muted hover:text-ink" onClick={() => router.back()} aria-label={t('back')}>
+              {/* The back chevron follows the reading direction. */}
+              {dir === 'rtl' ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
             </button>
           ) : (
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold/15 text-[15px]" aria-hidden>
@@ -62,23 +63,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </span>
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[15px] font-extrabold tracking-[0.14em] text-gold">GOLD ORDERS</h1>
+            <h1 className="truncate text-[15px] font-extrabold tracking-[0.14em] text-gold">{t('app_name')}</h1>
             <p className="truncate text-[11px] text-muted">
               {settings.shopName ? `${settings.shopName} · ` : ''}
               {mounted ? (
                 <>
-                  <span className="num">{dubaiDate()}</span> · <span className="num">{clock}</span> · Dubai
+                  <span className="num">{dubaiDate()}</span> · <span className="num">{clock}</span> · {t('dubai')}
                 </>
               ) : null}
             </p>
           </div>
           {mounted && !online ? (
-            <span className="chip bg-warn/15 text-warn" title="Offline — changes are queued">
+            <span className="chip bg-warn/15 text-warn" title={t('offline')}>
               <CloudOff className="h-3.5 w-3.5" />
-              {pending > 0 ? pending : 'Offline'}
+              {pending > 0 ? pending : t('offline')}
             </span>
           ) : mounted && pending > 0 ? (
-            <button type="button" className="chip bg-info/15 text-info" onClick={() => void syncNow()} title="Sync queued changes">
+            <button type="button" className="chip bg-info/15 text-info" onClick={() => void syncNow()} title={t('sync_queued')}>
               <RefreshCw className="h-3.5 w-3.5" />
               {pending}
             </button>
@@ -91,19 +92,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 mx-auto max-w-2xl border-t border-line bg-surface/95 backdrop-blur no-print">
         <ul className="grid grid-cols-5 items-center">
           {NAV.slice(0, 2).map((item) => (
-            <NavItem key={item.href} {...item} pathname={pathname} />
+            <NavItem key={item.href} href={item.href} icon={item.icon} label={t(item.key)} pathname={pathname} />
           ))}
           <li className="flex justify-center">
             <Link
               href="/orders/new"
-              aria-label="New order"
+              aria-label={t('new_order')}
               className="-mt-6 grid h-14 w-14 place-items-center rounded-full bg-gold text-black shadow-pop transition active:scale-95"
             >
               <Plus className="h-7 w-7" strokeWidth={2.5} />
             </Link>
           </li>
           {NAV.slice(2).map((item) => (
-            <NavItem key={item.href} {...item} pathname={pathname} />
+            <NavItem key={item.href} href={item.href} icon={item.icon} label={t(item.key)} pathname={pathname} />
           ))}
         </ul>
       </nav>

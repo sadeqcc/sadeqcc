@@ -19,7 +19,7 @@ interface Traveler {
 /** Section 34 — the packing list carries no customer money at all. */
 export default function PackingListPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { settings } = useApp();
+  const { settings, t } = useApp();
   const [traveler, setTraveler] = useState<Traveler | null>(null);
   const [orders, setOrders] = useState<OrderView[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,7 +46,7 @@ export default function PackingListPage({ params }: { params: Promise<{ id: stri
   }, [load]);
 
   if (loading) return <Skeleton className="h-96" />;
-  if (error || !traveler) return <ErrorState text="Could not load the packing list." onRetry={() => void load()} />;
+  if (error || !traveler) return <ErrorState text={t('could_not_load_packing')} onRetry={() => void load()} />;
 
   const totalWeightMg = orders.reduce((a, o) => a + (o.actualWeightMg ?? o.expectedWeightMg), 0);
   const destinations = [...new Set(orders.map((o) => o.destination).filter(Boolean))].join(', ');
@@ -54,38 +54,38 @@ export default function PackingListPage({ params }: { params: Promise<{ id: stri
   return (
     <div className="space-y-4">
       <button type="button" className="btn-primary w-full no-print" onClick={() => window.print()}>
-        <Printer className="h-4 w-4" /> Print
+        <Printer className="h-4 w-4" /> {t('print')}
       </button>
 
       <article className="card card-pad print-block">
         <header className="mb-4 border-b border-line pb-3">
           <h1 className="text-[20px] font-extrabold text-ink">{settings.shopName || 'Gold Orders'}</h1>
-          <p className="mt-2 text-[14px] font-bold uppercase tracking-wide text-gold">Traveler Packing List</p>
+          <p className="mt-2 text-[14px] font-bold uppercase tracking-wide text-gold">{t('print_packing_title')}</p>
           <p className="mt-1 text-[13px] text-ink">
             <span className="font-semibold">{traveler.name}</span>
             {traveler.phone ? ` · ${traveler.phone}` : ''}
             {traveler.idReference ? ` · ID ${traveler.idReference}` : ''}
           </p>
           <p className="num text-[12px] text-muted">
-            Destination: {destinations || '—'} · {orders.length} {orders.length === 1 ? 'order' : 'orders'} ·{' '}
-            {formatWeight(totalWeightMg)} g total
+            {t('destination')}: {destinations || '—'} ·{' '}
+            {t('packing_meta', { n: orders.length, weight: `${formatWeight(totalWeightMg)} g` })}
           </p>
         </header>
 
         {orders.length === 0 ? (
-          <p className="text-[13px] text-muted">This traveler is not carrying any orders right now.</p>
+          <p className="text-[13px] text-muted">{t('not_carrying')}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="text-muted">
                   <th className="py-1 text-start font-semibold">#</th>
-                  <th className="py-1 text-start font-semibold">Order</th>
-                  <th className="py-1 text-start font-semibold">Customer</th>
-                  <th className="py-1 text-start font-semibold">Product</th>
-                  <th className="py-1 text-start font-semibold">Karat</th>
-                  <th className="py-1 text-end font-semibold">Weight</th>
-                  <th className="py-1 text-start font-semibold">Destination</th>
+                  <th className="py-1 text-start font-semibold">{t('order')}</th>
+                  <th className="py-1 text-start font-semibold">{t('customer')}</th>
+                  <th className="py-1 text-start font-semibold">{t('product')}</th>
+                  <th className="py-1 text-start font-semibold">{t('karat')}</th>
+                  <th className="py-1 text-end font-semibold">{t('weight')}</th>
+                  <th className="py-1 text-start font-semibold">{t('destination')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -102,7 +102,7 @@ export default function PackingListPage({ params }: { params: Promise<{ id: stri
                 ))}
                 <tr className="border-t-2 border-line font-bold">
                   <td className="py-1.5" colSpan={5}>
-                    Total
+                    {t('total')}
                   </td>
                   <td className="num py-1.5 text-end">{formatWeight(totalWeightMg)} g</td>
                   <td />
@@ -113,13 +113,13 @@ export default function PackingListPage({ params }: { params: Promise<{ id: stri
         )}
 
         <div className="mt-10 flex gap-8 text-[12px] text-muted">
-          <span className="flex-1 border-t border-line pt-1">Traveler signature</span>
-          <span className="flex-1 border-t border-line pt-1">Shop signature</span>
-          <span className="flex-1 border-t border-line pt-1">Date {dubaiShort(new Date().toISOString().slice(0, 10))}</span>
+          <span className="flex-1 border-t border-line pt-1">{t('traveler')}</span>
+          <span className="flex-1 border-t border-line pt-1">{t('shop_signature')}</span>
+          <span className="flex-1 border-t border-line pt-1">{t('date')} {dubaiShort(new Date().toISOString().slice(0, 10))}</span>
         </div>
 
         <footer className="mt-4 border-t border-line pt-2 text-[11px] text-muted">
-          Printed {dubaiStamp(new Date())} · Asia/Dubai
+          {t('printed_at', { stamp: dubaiStamp(new Date()) })}
         </footer>
       </article>
     </div>

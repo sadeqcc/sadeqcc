@@ -7,13 +7,13 @@ import { DateInput, Field, Modal, NumberInput, Select, Spinner, TextArea, TextIn
 import { ApiError, apiWrite } from '@/lib/client';
 import { dubaiDate } from '@/lib/date';
 import { formatMoney, formatWeight, parseMoney, parseWeight } from '@/lib/num';
-import { compareWeight, WEIGHT_VERDICT_LABEL } from '@/lib/calc';
+import { compareWeight, WEIGHT_VERDICT_KEY } from '@/lib/calc';
 import {
   CANCEL_REASONS,
   DELIVERY_METHODS,
   QUALITY_CHECKS,
   STATUS_ICON,
-  STATUS_LABEL,
+  STATUS_KEY,
   type OrderStatus,
   type OrderView,
 } from '@/lib/types';
@@ -33,7 +33,7 @@ export function StatusUpdateDialog({
   onClose: () => void;
   onUpdated: (order: OrderView) => void;
 }) {
-  const { settings, toast, confirm } = useApp();
+  const { settings, toast, confirm, t } = useApp();
   const today = dubaiDate();
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<Record<string, string>>({});
@@ -111,7 +111,7 @@ export function StatusUpdateDialog({
       }
       if (target === 'cancelled') {
         if (!form.cancelReason) {
-          setError('Choose a cancellation reason.');
+          setError(t('choose_cancel_reason'));
           setBusy(false);
           return;
         }
@@ -122,16 +122,16 @@ export function StatusUpdateDialog({
       const res = await apiWrite<{ order: OrderView }>(`/api/orders/${order.id}/status`, body, 'POST', { queue: false });
       if (res) {
         onUpdated(res.order);
-        toast(`Order moved to ${STATUS_LABEL[target]}`);
+        toast(t('moved_to', { status: t(STATUS_KEY[target]) }));
         onClose();
       }
     } catch (e) {
       if (e instanceof ApiError && e.code === 'balance_outstanding') {
         const outstanding = Number(e.extra?.remainingBalanceFils ?? order.remainingBalanceFils);
         const c = await confirm({
-          title: 'Customer still has a balance',
-          body: `⚠ ${settings.currency} ${formatMoney(outstanding)} is still outstanding. Deliver anyway?`,
-          confirmLabel: 'Deliver anyway',
+          title: t('balance_warning_title'),
+          body: `⚠ ${t('balance_warning_body', { amount: `${settings.currency} ${formatMoney(outstanding)}` })}`,
+          confirmLabel: t('deliver_anyway'),
           danger: true,
         });
         if (c.ok) await submit(true);
@@ -140,17 +140,17 @@ export function StatusUpdateDialog({
       if (e instanceof ApiError) {
         setError(
           e.code === 'maker_required'
-            ? 'Choose a maker first.'
+            ? t('choose_maker_first')
             : e.code === 'traveler_required'
-              ? 'Choose a traveler first.'
+              ? t('choose_traveler_first')
               : e.code === 'actual_weight_required'
-                ? 'Enter the actual weight.'
+                ? t('enter_actual_weight')
                 : e.code === 'cancel_reason_required'
-                  ? 'Choose a cancellation reason.'
-                  : 'Could not update the status.',
+                  ? t('choose_cancel_reason')
+                  : t('could_not_update_status'),
         );
       } else {
-        setError('Could not update the status.');
+        setError(t('could_not_update_status'));
       }
     } finally {
       setBusy(false);
@@ -164,11 +164,11 @@ export function StatusUpdateDialog({
     <Modal
       open
       onClose={onClose}
-      title={`${STATUS_ICON[target]} ${returningToMaker ? 'Return to maker' : `Move to ${STATUS_LABEL[target]}`}`}
+      title={`${STATUS_ICON[target]} ${returningToMaker ? t('return_to_maker') : t('move_to', { status: t(STATUS_KEY[target]) })}`}
       footer={
         <>
           <button type="button" className="btn-ghost flex-1" onClick={onClose}>
-            Cancel
+            {t('cancel')}
           </button>
           <button
             type="button"
@@ -177,35 +177,35 @@ export function StatusUpdateDialog({
             disabled={busy}
           >
             {busy ? <Spinner /> : null}
-            Confirm
+            {t('confirm')}
           </button>
         </>
       }
     >
       {returningToMaker ? (
         <p className="rounded-xl bg-warn/10 px-3 py-2 text-[12px] text-warn">
-          The Ready event stays in the timeline — this is recorded as a return, not a correction.
+          {t('return_to_maker_note')}
         </p>
       ) : null}
 
       {target === 'maker' ? (
         <>
-          <EntityPicker entity="makers" label="Maker" required value={makerId} onChange={setMakerId} />
+          <EntityPicker entity="makers" label={t('maker')} required value={makerId} onChange={setMakerId} />
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Sent to maker">
+            <Field label={t('sent_to_maker')}>
               <DateInput value={form.sentToMakerDate ?? today} onChange={(v) => set('sentToMakerDate', v)} />
             </Field>
-            <Field label="Expected ready">
+            <Field label={t('expected_ready')}>
               <DateInput value={form.expectedReadyDate ?? order.expectedReadyDate ?? ''} onChange={(v) => set('expectedReadyDate', v)} />
             </Field>
           </div>
-          <Field label="Maker reference">
+          <Field label={t('maker_reference')}>
             <TextInput value={form.makerReference ?? order.makerReference ?? ''} onChange={(v) => set('makerReference', v)} />
           </Field>
-          <Field label="Maker cost">
+          <Field label={t('maker_cost')}>
             <NumberInput value={form.makerCost ?? ''} onChange={(v) => set('makerCost', v)} suffix={settings.currency} />
           </Field>
-          <Field label="Maker notes">
+          <Field label={t('maker_notes')}>
             <TextArea value={form.makerNotes ?? ''} onChange={(v) => set('makerNotes', v)} />
           </Field>
         </>
@@ -213,7 +213,7 @@ export function StatusUpdateDialog({
 
       {target === 'ready' ? (
         <>
-          <Field label="Actual weight" required hint={`Expected ${formatWeight(order.expectedWeightMg)} g`}>
+          <Field label={t('actual_weight')} required hint={t('expected_is', { weight: `${formatWeight(order.expectedWeightMg)} g` })}>
             <NumberInput
               value={form.actualWeight ?? (order.actualWeightMg !== null ? formatWeight(order.actualWeightMg, false) : '')}
               onChange={(v) => set('actualWeight', v)}
@@ -231,23 +231,23 @@ export function StatusUpdateDialog({
                     : 'bg-bad/10 text-bad'
               }`}
             >
-              Difference {weightCheck.differenceMg >= 0 ? '+' : '−'}
-              {formatWeight(Math.abs(weightCheck.differenceMg))} g · {WEIGHT_VERDICT_LABEL[weightCheck.verdict]}
+              {t('difference')} {weightCheck.differenceMg >= 0 ? '+' : '−'}
+              {formatWeight(Math.abs(weightCheck.differenceMg))} g · {t(WEIGHT_VERDICT_KEY[weightCheck.verdict])}
             </p>
           ) : null}
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Ready date">
+            <Field label={t('ready_date')}>
               <DateInput value={form.readyDate ?? today} onChange={(v) => set('readyDate', v)} />
             </Field>
-            <Field label="Maker cost">
+            <Field label={t('maker_cost')}>
               <NumberInput value={form.makerCost ?? ''} onChange={(v) => set('makerCost', v)} suffix={settings.currency} />
             </Field>
           </div>
-          <Field label="Quality check">
+          <Field label={t('quality_check')}>
             <Select
               value={form.qualityCheck ?? ''}
               onChange={(v) => set('qualityCheck', v)}
-              placeholder="Not checked"
+              placeholder={t('not_checked')}
               options={QUALITY_CHECKS.map((q) => ({ value: q, label: q }))}
             />
           </Field>
@@ -256,27 +256,27 @@ export function StatusUpdateDialog({
 
       {target === 'traveler' ? (
         <>
-          <EntityPicker entity="travelers" label="Traveler" required value={travelerId} onChange={setTravelerId} />
-          <Field label="Destination" required>
-            <TextInput value={form.destination ?? order.destination ?? ''} onChange={(v) => set('destination', v)} placeholder="Bamako, Mali" />
+          <EntityPicker entity="travelers" label={t('traveler')} required value={travelerId} onChange={setTravelerId} />
+          <Field label={t('destination')} required>
+            <TextInput value={form.destination ?? order.destination ?? ''} onChange={(v) => set('destination', v)} />
           </Field>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Departure date">
+            <Field label={t('departure')}>
               <DateInput value={form.departureDate ?? ''} onChange={(v) => set('departureDate', v)} />
             </Field>
-            <Field label="Expected arrival">
+            <Field label={t('expected_arrival')}>
               <DateInput value={form.expectedArrival ?? ''} onChange={(v) => set('expectedArrival', v)} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Flight number">
+            <Field label={t('flight')}>
               <TextInput value={form.flightNumber ?? ''} onChange={(v) => set('flightNumber', v)} />
             </Field>
-            <Field label="Airline">
+            <Field label={t('airline')}>
               <TextInput value={form.airline ?? ''} onChange={(v) => set('airline', v)} />
             </Field>
           </div>
-          <Field label="Bag / package reference">
+          <Field label={t('package_ref')}>
             <TextInput value={form.packageRef ?? ''} onChange={(v) => set('packageRef', v)} />
           </Field>
         </>
@@ -285,18 +285,18 @@ export function StatusUpdateDialog({
       {target === 'arrived' ? (
         <>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Arrival date">
+            <Field label={t('arrival_date')}>
               <DateInput value={form.arrivalDate ?? today} onChange={(v) => set('arrivalDate', v)} />
             </Field>
-            <Field label="Arrival time">
-              <input className="input num" type="time" value={form.arrivalTime ?? ''} onChange={(e) => set('arrivalTime', e.target.value)} aria-label="Arrival time" />
+            <Field label={t('arrival_time')}>
+              <input className="input num" type="time" value={form.arrivalTime ?? ''} onChange={(e) => set('arrivalTime', e.target.value)} aria-label={t('arrival_time')} />
             </Field>
           </div>
-          <Field label="Destination">
+          <Field label={t('destination')}>
             <TextInput value={form.destination ?? order.destination ?? ''} onChange={(v) => set('destination', v)} />
           </Field>
-          <Field label="Received by">
-            <TextInput value={form.receivedBy ?? ''} onChange={(v) => set('receivedBy', v)} placeholder="Who took delivery locally" />
+          <Field label={t('received_by')}>
+            <TextInput value={form.receivedBy ?? ''} onChange={(v) => set('receivedBy', v)} />
           </Field>
         </>
       ) : null}
@@ -305,19 +305,19 @@ export function StatusUpdateDialog({
         <>
           <div className="rounded-xl border border-line bg-surface2 p-3 text-[13px]">
             <div className="flex justify-between py-0.5">
-              <span className="text-muted">Total</span>
+              <span className="text-muted">{t('total')}</span>
               <span className="num font-semibold text-ink">
                 {settings.currency} {formatMoney(order.totalAmountFils)}
               </span>
             </div>
             <div className="flex justify-between py-0.5">
-              <span className="text-muted">Paid</span>
+              <span className="text-muted">{t('total_paid')}</span>
               <span className="num font-semibold text-ink">
                 {settings.currency} {formatMoney(order.totalPaidFils)}
               </span>
             </div>
             <div className="flex justify-between border-t border-line pt-1.5">
-              <span className="font-bold text-ink">Remaining</span>
+              <span className="font-bold text-ink">{t('remaining')}</span>
               <span className={`num font-extrabold ${remainingAfterFinal > 0 ? 'text-bad' : 'text-ok'}`}>
                 {settings.currency} {formatMoney(remainingAfterFinal)}
               </span>
@@ -325,21 +325,21 @@ export function StatusUpdateDialog({
           </div>
           {remainingAfterFinal > 0 ? (
             <p className="rounded-xl bg-bad/10 px-3 py-2 text-[12px] font-semibold text-bad">
-              ⚠ Customer still has {settings.currency} {formatMoney(remainingAfterFinal)} balance
+              ⚠ {t('balance_chip_warning', { amount: `${settings.currency} ${formatMoney(remainingAfterFinal)}` })}
             </p>
           ) : null}
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Delivered date">
+            <Field label={t('delivered_date')}>
               <DateInput value={form.deliveredDate ?? today} onChange={(v) => set('deliveredDate', v)} />
             </Field>
-            <Field label="Delivered time">
-              <input className="input num" type="time" value={form.deliveredTime ?? ''} onChange={(e) => set('deliveredTime', e.target.value)} aria-label="Delivered time" />
+            <Field label={t('delivered_time')}>
+              <input className="input num" type="time" value={form.deliveredTime ?? ''} onChange={(e) => set('deliveredTime', e.target.value)} aria-label={t('delivered_time')} />
             </Field>
           </div>
-          <Field label="Received by">
+          <Field label={t('received_by')}>
             <TextInput value={form.receivedBy ?? order.customerName} onChange={(v) => set('receivedBy', v)} />
           </Field>
-          <Field label="Delivery method">
+          <Field label={t('delivery_method')}>
             <Select
               value={form.deliveryMethod ?? 'Shop Pickup'}
               onChange={(v) => set('deliveryMethod', v)}
@@ -348,10 +348,10 @@ export function StatusUpdateDialog({
           </Field>
           {order.remainingBalanceFils > 0 ? (
             <>
-              <Field label="Final payment" hint="Recorded as a real payment in the history">
+              <Field label={t('final_payment')} hint={t('final_payment_hint')}>
                 <NumberInput value={form.finalPayment ?? ''} onChange={(v) => set('finalPayment', v)} suffix={settings.currency} />
               </Field>
-              <Field label="Payment method">
+              <Field label={t('payment_method')}>
                 <Select
                   value={form.finalPaymentMethod ?? 'Cash'}
                   onChange={(v) => set('finalPaymentMethod', v)}
@@ -365,24 +365,24 @@ export function StatusUpdateDialog({
 
       {target === 'cancelled' ? (
         <>
-          <Field label="Cancellation reason" required>
+          <Field label={t('cancel_reason')} required>
             <Select
               value={form.cancelReason ?? ''}
               onChange={(v) => set('cancelReason', v)}
-              placeholder="Choose a reason"
+              placeholder={t('choose_reason')}
               options={CANCEL_REASONS.map((r) => ({ value: r, label: r }))}
             />
           </Field>
-          <Field label="Details">
+          <Field label={t('cancel_details')}>
             <TextArea value={form.cancelNote ?? ''} onChange={(v) => set('cancelNote', v)} />
           </Field>
           <p className="rounded-xl bg-surface2 px-3 py-2 text-[12px] text-muted">
-            Cancelled orders are kept forever and excluded from financial totals.
+            {t('cancel_note_hint')}
           </p>
         </>
       ) : null}
 
-      <Field label="Note for the timeline">
+      <Field label={t('timeline_note')}>
         <TextArea value={form.note ?? ''} onChange={(v) => set('note', v)} rows={2} />
       </Field>
 

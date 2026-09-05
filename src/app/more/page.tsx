@@ -19,17 +19,18 @@ import {
 import { useApp } from '@/components/providers';
 import { Card, CardTitle, Modal, SearchInput, Spinner, useDebouncedValue } from '@/components/ui';
 import { apiGet, apiWrite } from '@/lib/client';
-import { STATUS_LABEL, type OrderView } from '@/lib/types';
+import { STATUS_KEY, type OrderView } from '@/lib/types';
+import type { DictKey } from '@/i18n/dict';
 
 const LINKS = [
-  { href: '/makers', label: 'Makers', icon: Hammer, hint: 'Workshops and their open jobs' },
-  { href: '/travelers', label: 'Travelers', icon: Plane, hint: 'Who is carrying which orders' },
-  { href: '/calendar', label: 'Calendar', icon: CalendarDays, hint: 'Ready, travel and delivery dates' },
-  { href: '/follow-up', label: "Today's Follow-Up", icon: ClipboardList, hint: 'What needs action today' },
-  { href: '/reports', label: 'Reports', icon: BarChart3, hint: 'Totals, weights and money' },
-  { href: '/notifications', label: 'Notifications', icon: Bell, hint: 'Alerts and their settings' },
-  { href: '/settings', label: 'Settings', icon: SettingsIcon, hint: 'Shop, defaults, backup and security' },
-];
+  { href: '/makers', label: 'makers', icon: Hammer, hint: 'more_makers_hint' },
+  { href: '/travelers', label: 'travelers', icon: Plane, hint: 'more_travelers_hint' },
+  { href: '/calendar', label: 'calendar', icon: CalendarDays, hint: 'more_calendar_hint' },
+  { href: '/follow-up', label: 'todays_followup', icon: ClipboardList, hint: 'more_followup_hint' },
+  { href: '/reports', label: 'reports', icon: BarChart3, hint: 'more_reports_hint' },
+  { href: '/notifications', label: 'notifications', icon: Bell, hint: 'more_notifications_hint' },
+  { href: '/settings', label: 'settings', icon: SettingsIcon, hint: 'more_settings_hint' },
+] as const satisfies readonly { href: string; label: DictKey; icon: unknown; hint: DictKey }[];
 
 interface SearchResults {
   orders: OrderView[];
@@ -39,7 +40,7 @@ interface SearchResults {
 }
 
 export default function MorePage() {
-  const { user, setUser, toast } = useApp();
+  const { user, setUser, toast, t } = useApp();
   const router = useRouter();
   const [searching, setSearching] = useState(false);
   const [q, setQ] = useState('');
@@ -70,17 +71,17 @@ export default function MorePage() {
   const logout = async () => {
     await apiWrite('/api/auth/logout', {}, 'POST', { queue: false }).catch(() => undefined);
     setUser(null);
-    toast('Signed out');
+    toast(t('signed_out'));
     router.replace('/login');
   };
 
   return (
     <div className="space-y-4">
-      <h2 className="text-[18px] font-extrabold text-ink">More</h2>
+      <h2 className="text-[18px] font-extrabold text-ink">{t('more')}</h2>
 
       <button type="button" className="btn-ghost w-full justify-start" onClick={() => setSearching(true)}>
         <Search className="h-4 w-4" />
-        Search everything
+        {t('search_everything')}
       </button>
 
       <Card>
@@ -94,8 +95,8 @@ export default function MorePage() {
                     <Icon className="h-4 w-4" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[14px] font-semibold text-ink">{l.label}</span>
-                    <span className="block truncate text-[12px] text-muted">{l.hint}</span>
+                    <span className="block text-[14px] font-semibold text-ink">{t(l.label)}</span>
+                    <span className="block truncate text-[12px] text-muted">{t(l.hint)}</span>
                   </span>
                 </Link>
               </li>
@@ -105,16 +106,16 @@ export default function MorePage() {
       </Card>
 
       <Card>
-        <CardTitle title="Signed in" icon={<ShieldCheck className="h-4 w-4" />} />
+        <CardTitle title={t('signed_in')} icon={<ShieldCheck className="h-4 w-4" />} />
         <p className="text-[14px] font-semibold text-ink">{user?.displayName ?? user?.username}</p>
         <p className="mb-3 text-[12px] capitalize text-muted">{user?.role}</p>
         <button type="button" className="btn-ghost btn-sm w-full" onClick={() => void logout()}>
-          <LogOut className="h-4 w-4" /> Sign out
+          <LogOut className="h-4 w-4" /> {t('sign_out')}
         </button>
       </Card>
 
-      <Modal open={searching} onClose={() => setSearching(false)} title="Search" wide>
-        <SearchInput value={q} onChange={setQ} placeholder="Order, customer, phone, maker, traveler…" autoFocus />
+      <Modal open={searching} onClose={() => setSearching(false)} title={t('search')} wide>
+        <SearchInput value={q} onChange={setQ} placeholder={t('search_placeholder_all')} autoFocus />
         {busy ? (
           <div className="flex justify-center py-4">
             <Spinner className="h-5 w-5" />
@@ -122,28 +123,28 @@ export default function MorePage() {
         ) : null}
         {results ? (
           <div className="space-y-3">
-            <Group title="Orders" empty={results.orders.length === 0}>
+            <Group title={t('nav_orders')} empty={results.orders.length === 0}>
               {results.orders.map((o) => (
                 <Row
                   key={o.id}
                   href={`/orders/${o.id}`}
                   title={`${o.orderNumber} · ${o.customerName}`}
-                  sub={`${o.productName} · ${o.karat} · ${STATUS_LABEL[o.status]}`}
+                  sub={`${o.productName} · ${o.karat} · ${t(STATUS_KEY[o.status])}`}
                   onGo={() => setSearching(false)}
                 />
               ))}
             </Group>
-            <Group title="Customers" empty={results.customers.length === 0}>
+            <Group title={t('customers')} empty={results.customers.length === 0}>
               {results.customers.map((c) => (
                 <Row key={c.id} href={`/customers/${c.id}`} title={c.name} sub={c.phone ?? '—'} onGo={() => setSearching(false)} />
               ))}
             </Group>
-            <Group title="Makers" empty={results.makers.length === 0}>
+            <Group title={t('makers')} empty={results.makers.length === 0}>
               {results.makers.map((m) => (
                 <Row key={m.id} href={`/makers/${m.id}`} title={m.name} sub={m.company ?? '—'} onGo={() => setSearching(false)} />
               ))}
             </Group>
-            <Group title="Travelers" empty={results.travelers.length === 0}>
+            <Group title={t('travelers')} empty={results.travelers.length === 0}>
               {results.travelers.map((t) => (
                 <Row key={t.id} href={`/travelers/${t.id}`} title={t.name} sub={t.phone ?? '—'} onGo={() => setSearching(false)} />
               ))}

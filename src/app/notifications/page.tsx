@@ -8,22 +8,22 @@ import { useApp } from '@/components/providers';
 import { apiGet } from '@/lib/client';
 import type { FollowUpItem, Notification } from '@/lib/insights';
 
-function labels() {
-  return {
-    overdue: 'Order overdue',
-    dueToday: 'Delivery today',
-    dueTomorrow: 'Delivery tomorrow',
-    makerDeadline: 'Maker deadline passed',
-    travelerDeparture: 'Traveler departure today',
-    travelerArrival: 'Traveler arrival today',
-    balance: 'Outstanding balance',
-    ready: 'Order ready',
-    arrived: 'Order arrived',
-  };
-}
+import type { DictKey } from '@/i18n/dict';
+
+const NOTIF_KEYS: Record<string, DictKey> = {
+  overdue: 'notif_overdue',
+  dueToday: 'notif_dueToday',
+  dueTomorrow: 'notif_dueTomorrow',
+  makerDeadline: 'notif_makerDeadline',
+  travelerDeparture: 'notif_travelerDeparture',
+  travelerArrival: 'notif_travelerArrival',
+  balance: 'notif_balance',
+  ready: 'notif_ready',
+  arrived: 'notif_arrived',
+};
 
 export default function NotificationsPage() {
-  const { settings, setSettings, can } = useApp();
+  const { settings, setSettings, can, t } = useApp();
   const [items, setItems] = useState<Notification[]>([]);
   const [followUps, setFollowUps] = useState<FollowUpItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,18 +46,17 @@ export default function NotificationsPage() {
     void load();
   }, [load]);
 
-  const names = labels();
 
   return (
     <div className="space-y-4">
-      <h2 className="text-[18px] font-extrabold text-ink">Notifications</h2>
+      <h2 className="text-[18px] font-extrabold text-ink">{t('notifications')}</h2>
 
       {loading ? (
         <Skeleton className="h-40" />
       ) : error ? (
-        <ErrorState text="Could not load notifications." onRetry={() => void load()} />
+        <ErrorState text={t('could_not_load_notifications')} onRetry={() => void load()} />
       ) : items.length === 0 ? (
-        <EmptyState title="Nothing needs attention" text="Overdue orders, deadlines and balances will show up here." icon="✅" />
+        <EmptyState title={t('no_notifications')} text={t('no_notifications_hint')} icon="✅" />
       ) : (
         <ul className="space-y-2">
           {items.map((n) => (
@@ -84,7 +83,7 @@ export default function NotificationsPage() {
 
       {followUps.length ? (
         <Card>
-          <CardTitle title="Today's Follow-Up" subtitle={`${followUps.length} actions`} />
+          <CardTitle title={t('todays_followup')} subtitle={t('followup_count', { n: followUps.length })} />
           <ul className="divide-y divide-line/70">
             {followUps.slice(0, 12).map((f) => (
               <li key={`${f.code}-${f.orderId}`}>
@@ -105,14 +104,14 @@ export default function NotificationsPage() {
 
       {can('settings.manage') ? (
         <Card>
-          <CardTitle title="Notification settings" subtitle="Choose what the shop is told about" />
+          <CardTitle title={t('notification_settings')} subtitle={t('notification_settings_hint')} />
           <ul className="divide-y divide-line/70">
-            {(Object.keys(names) as (keyof typeof names)[]).map((key) => (
+            {(Object.keys(NOTIF_KEYS) as (keyof typeof settings.notifications)[]).map((key) => (
               <li key={key} className="flex items-center justify-between gap-3 py-2.5">
-                <span className="text-[13px] text-ink">{names[key]}</span>
+                <span className="text-[13px] text-ink">{t(NOTIF_KEYS[key])}</span>
                 <Toggle
                   checked={settings.notifications[key]}
-                  label={names[key]}
+                  label={t(NOTIF_KEYS[key])}
                   onChange={(v) => void setSettings({ notifications: { [key]: v } })}
                 />
               </li>

@@ -1,3 +1,5 @@
+import type { DictKey, Lang } from '@/i18n/dict';
+
 /**
  * GOLD ORDERS — domain model.
  *
@@ -53,6 +55,17 @@ export const STATUS_TONE: Record<OrderStatus, string> = {
   cancelled: 'st-cancelled',
 };
 
+/** Translation keys for the status names, so a badge reads in the chosen language. */
+export const STATUS_KEY: Record<OrderStatus, DictKey> = {
+  ordered: 'status_ordered',
+  maker: 'status_maker',
+  ready: 'status_ready',
+  traveler: 'status_traveler',
+  arrived: 'status_arrived',
+  delivered: 'status_delivered',
+  cancelled: 'status_cancelled',
+};
+
 export const CLOSED_STATUSES: OrderStatus[] = ['delivered', 'cancelled'];
 export const isClosed = (s: OrderStatus): boolean => CLOSED_STATUSES.includes(s);
 
@@ -81,6 +94,18 @@ export const URGENCY_LABEL: Record<Urgency, string> = {
   no_date: 'No Delivery Date',
   delivered: 'Delivered',
   cancelled: 'Cancelled',
+};
+
+export const URGENCY_KEY: Record<Urgency, DictKey> = {
+  critical: 'urgency_critical',
+  high: 'urgency_high',
+  late: 'urgency_late',
+  due_today: 'urgency_due_today',
+  due_tomorrow: 'urgency_due_tomorrow',
+  upcoming: 'urgency_upcoming',
+  no_date: 'urgency_no_date',
+  delivered: 'urgency_delivered',
+  cancelled: 'urgency_cancelled',
 };
 
 export const URGENCY_ICON: Record<Urgency, string> = {
@@ -155,7 +180,8 @@ export const DEFAULT_TAGS = [
   'Exchange',
 ] as const;
 
-export const COMMON_ROUTES = ['Dubai → Mali', 'Dubai → Paris', 'Dubai → USA', 'Dubai → Other'] as const;
+/** Route suggestions come from the shop's own destination list in Settings. */
+export const COMMON_ROUTES: readonly string[] = [];
 
 export const MAKER_SPECIALTIES = ['Dubai Style', 'Indian Style', 'Italian Style', 'Repair', 'Custom Work'] as const;
 
@@ -223,6 +249,7 @@ export function can(role: string | null | undefined, p: Permission): boolean {
 /* --------------------------------------------------------------- settings */
 
 export interface AppSettings {
+  language: Lang;
   shopName: string;
   shopLogo: string | null;
   shopPhone: string;
@@ -262,7 +289,8 @@ export type SettingsPatch = Partial<Omit<AppSettings, 'notifications'>> & {
 };
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  shopName: 'Gold Orders',
+  language: 'ar',
+  shopName: '',
   shopLogo: null,
   shopPhone: '',
   shopAddress: '',
@@ -274,7 +302,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   styles: [...STYLES],
   categories: [...CATEGORIES],
   paymentMethods: [...PAYMENT_METHODS],
-  destinations: ['Dubai', 'Bamako, Mali', 'Paris, France', 'USA'],
+  destinations: [],
   weightPrecision: 3,
   defaultToleranceMg: 2000,
   defaultGoldRateFilsPerGram: {},

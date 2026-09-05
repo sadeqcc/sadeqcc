@@ -13,7 +13,7 @@ import { CATEGORIES, DEFAULT_TAGS, KARATS, QUALITY_CHECKS, STYLES, type OrderVie
 
 export default function EditOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { settings, toast, confirm, can } = useApp();
+  const { settings, toast, confirm, can, t } = useApp();
   const router = useRouter();
 
   const [order, setOrder] = useState<OrderView | null>(null);
@@ -84,7 +84,7 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
   }, [load]);
 
   if (loading) return <Skeleton className="h-96" />;
-  if (error || !order) return <ErrorState text="Could not load this order." onRetry={() => void load()} />;
+  if (error || !order) return <ErrorState text={t('could_not_load_order')} onRetry={() => void load()} />;
 
   const rateInput = parseMoney(f.goldRate ?? '') ?? 0;
   const goldRateFilsPerGram = rateMode === 'per_ounce' ? ouncePriceToPerGram(rateInput) : rateInput;
@@ -106,9 +106,9 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
   const save = async () => {
     // Changing a stored weight or price is an audited edit, so a reason is asked for.
     const c = await confirm({
-      title: 'Save changes?',
-      body: 'The previous values are written to the audit log before they are replaced.',
-      confirmLabel: 'Save changes',
+      title: t('save_changes_title'),
+      body: t('save_changes_body'),
+      confirmLabel: t('save_changes'),
       requireReason: true,
     });
     if (!c.ok) return;
@@ -157,10 +157,10 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
         'PATCH',
         { queue: false },
       );
-      toast('Order updated');
+      toast(t('order_updated'));
       router.replace(`/orders/${id}`);
     } catch (e) {
-      toast(e instanceof ApiError && e.code === 'forbidden' ? 'You do not have permission to edit orders' : 'Could not save the changes', 'error');
+      toast(e instanceof ApiError && e.code === 'forbidden' ? t('no_permission_edit') : t('could_not_save_changes'), 'error');
     } finally {
       setSaving(false);
     }
@@ -168,48 +168,48 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
 
   const archive = async () => {
     const c = await confirm({
-      title: 'Archive this order?',
-      body: 'The order and its whole history stay in the database — it just leaves the active lists.',
+      title: t('archive_title'),
+      body: t('archive_body'),
       danger: true,
-      confirmLabel: 'Archive order',
+      confirmLabel: t('archive_order'),
       requireReason: true,
     });
     if (!c.ok) return;
     try {
       await apiWrite(`/api/orders/${id}?reason=${encodeURIComponent(c.reason ?? '')}`, null, 'DELETE', { queue: false });
-      toast('Order archived');
+      toast(t('order_archived'));
       router.replace('/orders');
     } catch {
-      toast('Could not archive the order', 'error');
+      toast(t('could_not_archive'), 'error');
     }
   };
 
   return (
     <div className="space-y-4 pb-4">
       <h2 className="text-[18px] font-extrabold text-ink">
-        Edit {order.orderNumber}
+        {t('edit_title', { number: order.orderNumber })}
       </h2>
 
       <Card>
-        <CardTitle title="Order" />
+        <CardTitle title={t('order')} />
         <div className="space-y-3">
-          <EntityPicker entity="customers" label="Customer" required value={customerId} onChange={(cid) => setCustomerId(cid)} />
-          <Field label="Product name" required>
+          <EntityPicker entity="customers" label={t('customer')} required value={customerId} onChange={(cid) => setCustomerId(cid)} />
+          <Field label={t('product_name')} required>
             <TextInput value={f.productName ?? ''} onChange={(v) => set('productName', v)} />
           </Field>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Category">
+            <Field label={t('category')}>
               <Select value={f.category ?? ''} onChange={(v) => set('category', v)} options={(settings.categories.length ? settings.categories : [...CATEGORIES]).map((c) => ({ value: c, label: c }))} />
             </Field>
-            <Field label="Style">
-              <Select value={f.style ?? ''} onChange={(v) => set('style', v)} placeholder="No style" options={(settings.styles.length ? settings.styles : [...STYLES]).map((s) => ({ value: s, label: s }))} />
+            <Field label={t('style')}>
+              <Select value={f.style ?? ''} onChange={(v) => set('style', v)} placeholder={t('any_style')} options={(settings.styles.length ? settings.styles : [...STYLES]).map((s) => ({ value: s, label: s }))} />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Karat">
+            <Field label={t('karat')}>
               <Select value={f.karat ?? ''} onChange={(v) => set('karat', v)} options={(settings.karats.length ? settings.karats : [...KARATS]).map((k) => ({ value: k, label: k }))} />
             </Field>
-            <Field label="Reference no.">
+            <Field label={t('reference')}>
               <TextInput value={f.referenceNo ?? ''} onChange={(v) => set('referenceNo', v)} />
             </Field>
           </div>
@@ -217,21 +217,21 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       </Card>
 
       <Card>
-        <CardTitle title="Weight" />
+        <CardTitle title={t('weight')} />
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Expected weight" required>
+            <Field label={t('expected_weight')} required>
               <NumberInput value={f.expectedWeight ?? ''} onChange={(v) => set('expectedWeight', v)} suffix="g" />
             </Field>
-            <Field label="Actual weight">
+            <Field label={t('actual_weight')}>
               <NumberInput value={f.actualWeight ?? ''} onChange={(v) => set('actualWeight', v)} suffix="g" />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Minimum">
+            <Field label={t('minimum_weight')}>
               <NumberInput value={f.minimumWeight ?? ''} onChange={(v) => set('minimumWeight', v)} suffix="g" />
             </Field>
-            <Field label="Maximum">
+            <Field label={t('maximum_weight')}>
               <NumberInput value={f.maximumWeight ?? ''} onChange={(v) => set('maximumWeight', v)} suffix="g" />
             </Field>
           </div>
@@ -239,23 +239,23 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       </Card>
 
       <Card>
-        <CardTitle title="Price" subtitle={`Total updates to ${settings.currency} ${formatMoney(preview.totalFils)}`} />
+        <CardTitle title={t('price')} subtitle={t('total_updates_to', { amount: `${settings.currency} ${formatMoney(preview.totalFils)}` })} />
         <div className="space-y-3">
           <Segmented
             value={rateMode}
             onChange={setRateMode}
             options={[
-              { value: 'per_gram', label: 'Per gram' },
-              { value: 'per_ounce', label: 'Per ounce' },
-              { value: 'manual', label: 'Manual' },
+              { value: 'per_gram', label: t('per_gram') },
+              { value: 'per_ounce', label: t('per_ounce') },
+              { value: 'manual', label: t('manual') },
             ]}
           />
           {rateMode === 'manual' ? (
-            <Field label="Gold value">
+            <Field label={t('gold_value')}>
               <NumberInput value={f.goldValueOverride ?? ''} onChange={(v) => set('goldValueOverride', v)} suffix={settings.currency} />
             </Field>
           ) : (
-            <Field label={rateMode === 'per_ounce' ? 'Rate per ounce' : 'Rate per gram'}>
+            <Field label={rateMode === 'per_ounce' ? t('rate_per_ounce') : t('rate_per_gram')}>
               <NumberInput value={f.goldRate ?? ''} onChange={(v) => set('goldRate', v)} suffix={settings.currency} />
             </Field>
           )}
@@ -263,84 +263,84 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
             value={makingMode}
             onChange={setMakingMode}
             options={[
-              { value: 'per_gram', label: 'Making per gram' },
-              { value: 'fixed', label: 'Making fixed' },
+              { value: 'per_gram', label: t('per_gram') },
+              { value: 'fixed', label: t('making_fixed') },
             ]}
           />
-          <NumberInput value={f.makingCharge ?? ''} onChange={(v) => set('makingCharge', v)} suffix={settings.currency} ariaLabel="Making charge" />
+          <NumberInput value={f.makingCharge ?? ''} onChange={(v) => set('makingCharge', v)} suffix={settings.currency} ariaLabel={t('making_charge')} />
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Other charges">
+            <Field label={t('other_charges')}>
               <NumberInput value={f.otherCharges ?? ''} onChange={(v) => set('otherCharges', v)} suffix={settings.currency} />
             </Field>
-            <Field label="Discount">
+            <Field label={t('discount')}>
               <NumberInput value={f.discount ?? ''} onChange={(v) => set('discount', v)} suffix={settings.currency} />
             </Field>
           </div>
-          <Field label="VAT %">
+          <Field label={t('vat')}>
             <NumberInput value={f.vatPercent ?? ''} onChange={(v) => set('vatPercent', v)} suffix="%" />
           </Field>
         </div>
       </Card>
 
       <Card>
-        <CardTitle title="Maker & traveler" />
+        <CardTitle title={t('maker_traveler')} />
         <div className="space-y-3">
-          <EntityPicker entity="makers" label="Maker" value={makerId} onChange={setMakerId} />
+          <EntityPicker entity="makers" label={t('maker')} value={makerId} onChange={setMakerId} />
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Maker reference">
+            <Field label={t('maker_reference')}>
               <TextInput value={f.makerReference ?? ''} onChange={(v) => set('makerReference', v)} />
             </Field>
-            <Field label="Maker cost">
+            <Field label={t('maker_cost')}>
               <NumberInput value={f.makerCost ?? ''} onChange={(v) => set('makerCost', v)} suffix={settings.currency} />
             </Field>
           </div>
-          <Field label="Maker notes">
+          <Field label={t('maker_notes')}>
             <TextArea value={f.makerNotes ?? ''} onChange={(v) => set('makerNotes', v)} rows={2} />
           </Field>
-          <EntityPicker entity="travelers" label="Traveler" value={travelerId} onChange={setTravelerId} />
-          <Field label="Destination">
+          <EntityPicker entity="travelers" label={t('traveler')} value={travelerId} onChange={setTravelerId} />
+          <Field label={t('destination')}>
             <TextInput value={f.destination ?? ''} onChange={(v) => set('destination', v)} />
           </Field>
         </div>
       </Card>
 
       <Card>
-        <CardTitle title="Dates" />
+        <CardTitle title={t('dates')} />
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Order date">
+          <Field label={t('order_date')}>
             <DateInput value={f.orderDate ?? ''} onChange={(v) => set('orderDate', v)} />
           </Field>
-          <Field label="Expected ready">
+          <Field label={t('expected_ready')}>
             <DateInput value={f.expectedReadyDate ?? ''} onChange={(v) => set('expectedReadyDate', v)} />
           </Field>
-          <Field label="Expected delivery">
+          <Field label={t('expected_delivery')}>
             <DateInput value={f.expectedDeliveryDate ?? ''} onChange={(v) => set('expectedDeliveryDate', v)} />
           </Field>
-          <Field label="Ready date">
+          <Field label={t('ready_date')}>
             <DateInput value={f.readyDate ?? ''} onChange={(v) => set('readyDate', v)} />
           </Field>
-          <Field label="Arrival date">
+          <Field label={t('arrival_date')}>
             <DateInput value={f.arrivalDate ?? ''} onChange={(v) => set('arrivalDate', v)} />
           </Field>
-          <Field label="Delivered date">
+          <Field label={t('delivered_date')}>
             <DateInput value={f.deliveredDate ?? ''} onChange={(v) => set('deliveredDate', v)} />
           </Field>
         </div>
       </Card>
 
       <Card>
-        <CardTitle title="Other" />
+        <CardTitle title={t('other')} />
         <div className="space-y-3">
-          <Field label="Quality check">
-            <Select value={f.qualityCheck ?? ''} onChange={(v) => set('qualityCheck', v)} placeholder="Not checked" options={QUALITY_CHECKS.map((q) => ({ value: q, label: q }))} />
+          <Field label={t('quality_check')}>
+            <Select value={f.qualityCheck ?? ''} onChange={(v) => set('qualityCheck', v)} placeholder={t('not_checked')} options={QUALITY_CHECKS.map((q) => ({ value: q, label: q }))} />
           </Field>
-          <Field label="Received by">
+          <Field label={t('received_by')}>
             <TextInput value={f.receivedBy ?? ''} onChange={(v) => set('receivedBy', v)} />
           </Field>
-          <Field label="Notes">
+          <Field label={t('notes')}>
             <TextArea value={f.notes ?? ''} onChange={(v) => set('notes', v)} />
           </Field>
-          <Field label="Tags">
+          <Field label={t('tags')}>
             <TagPicker value={tags} onChange={setTags} suggestions={DEFAULT_TAGS} />
           </Field>
         </div>
@@ -349,14 +349,14 @@ export default function EditOrderPage({ params }: { params: Promise<{ id: string
       <div className="flex gap-2">
         <button type="button" className="btn-primary flex-1" onClick={() => void save()} disabled={saving}>
           {saving ? <Spinner /> : <Save className="h-4 w-4" />}
-          Save changes
+          {t('save_changes')}
         </button>
       </div>
 
       {can('order.delete') ? (
         <button type="button" className="btn-danger w-full" onClick={() => void archive()}>
           <Archive className="h-4 w-4" />
-          Archive order
+          {t('archive_order')}
         </button>
       ) : null}
     </div>

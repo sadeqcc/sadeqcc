@@ -3,11 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/components/providers';
-import { Card, Field, Spinner, TextInput } from '@/components/ui';
+import { Card, Field, Segmented, Spinner, TextInput } from '@/components/ui';
+import { LANGS, LANG_LABEL } from '@/i18n/dict';
 import { ApiError, apiWrite } from '@/lib/client';
 
 export default function LoginPage() {
-  const { user, needsSetup, authReady, refreshAuth, toast } = useApp();
+  const { user, needsSetup, authReady, refreshAuth, toast, t, settings, setSettings } = useApp();
   const router = useRouter();
   const [mode, setMode] = useState<'login' | 'setup'>('login');
   const [username, setUsername] = useState('');
@@ -32,20 +33,20 @@ export default function LoginPage() {
       const path = mode === 'setup' ? '/api/auth/register' : '/api/auth/login';
       await apiWrite(path, { username, password, displayName: displayName || username }, 'POST', { queue: false });
       await refreshAuth();
-      toast(mode === 'setup' ? 'Shop created' : 'Welcome back');
+      toast(mode === 'setup' ? t('shop_created') : t('welcome_back'));
       router.replace('/');
     } catch (err) {
       const code = err instanceof ApiError ? err.code : 'network_error';
       setError(
         code === 'invalid_credentials'
-          ? 'That username and password do not match.'
+          ? t('bad_credentials')
           : code === 'username_taken'
-            ? 'That username is already in use.'
+            ? t('username_in_use')
             : code === 'registration_closed'
-              ? 'This shop already has an owner. Sign in instead.'
+              ? t('registration_closed')
               : code === 'validation_failed'
-                ? 'Username needs 3+ characters and the password 6+.'
-                : 'Could not reach the server. Check your connection.',
+                ? t('credentials_invalid')
+                : t('network_error'),
       );
     } finally {
       setBusy(false);
@@ -58,25 +59,34 @@ export default function LoginPage() {
         <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gold/15 text-2xl" aria-hidden>
           🥇
         </span>
-        <h1 className="text-[22px] font-extrabold tracking-[0.16em] text-gold">GOLD ORDERS</h1>
-        <p className="mt-1 text-[13px] text-muted">Gold Order Tracking &amp; Delivery Management</p>
+        <h1 className="text-[22px] font-extrabold tracking-[0.16em] text-gold">{t('app_name')}</h1>
+        <p className="mt-1 text-[13px] text-muted">{t('app_tagline')}</p>
+      </div>
+
+      {/* The language is chosen before anyone signs in, so the first screen already reads right. */}
+      <div className="mb-4">
+        <Segmented
+          value={settings.language}
+          onChange={(v) => void setSettings({ language: v })}
+          options={LANGS.map((l) => ({ value: l, label: LANG_LABEL[l] }))}
+        />
       </div>
 
       <Card>
         <form onSubmit={submit} className="space-y-3">
-          <h2 className="text-[15px] font-bold text-ink">{mode === 'setup' ? 'Create your shop account' : 'Sign in'}</h2>
+          <h2 className="text-[15px] font-bold text-ink">{mode === 'setup' ? t('create_shop_account') : t('sign_in')}</h2>
 
           {mode === 'setup' ? (
-            <Field label="Your name">
-              <TextInput value={displayName} onChange={setDisplayName} placeholder="Shop owner" />
+            <Field label={t('your_name')}>
+              <TextInput value={displayName} onChange={setDisplayName} />
             </Field>
           ) : null}
 
-          <Field label="Username" required>
-            <TextInput value={username} onChange={setUsername} placeholder="owner" autoFocus />
+          <Field label={t('username')} required>
+            <TextInput value={username} onChange={setUsername} autoFocus />
           </Field>
 
-          <Field label="Password" required>
+          <Field label={t('password')} required>
             <TextInput value={password} onChange={setPassword} type="password" placeholder="••••••••" />
           </Field>
 
@@ -84,12 +94,12 @@ export default function LoginPage() {
 
           <button type="submit" className="btn-primary w-full" disabled={busy || !username || !password}>
             {busy ? <Spinner /> : null}
-            {mode === 'setup' ? 'Create shop' : 'Sign in'}
+            {mode === 'setup' ? t('create_shop') : t('sign_in')}
           </button>
 
           {!needsSetup ? (
             <p className="text-center text-[12px] text-muted">
-              Staff accounts are created by the owner in Settings.
+              {t('staff_note')}
             </p>
           ) : null}
         </form>

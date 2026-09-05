@@ -5,16 +5,17 @@ import { Image as ImageIcon } from 'lucide-react';
 import {
   STATUS_FLOW,
   STATUS_ICON,
-  STATUS_LABEL,
+  STATUS_KEY,
   URGENCY_ICON,
-  URGENCY_LABEL,
+  URGENCY_KEY,
   type OrderStatus,
   type OrderView,
   type Urgency,
 } from '@/lib/types';
-import { BALANCE_ICON, BALANCE_LABEL, type BalanceStatus } from '@/lib/calc';
+import { BALANCE_ICON, BALANCE_KEY, type BalanceStatus } from '@/lib/calc';
 import { dubaiShort } from '@/lib/date';
 import { formatMoney, formatWeight } from '@/lib/num';
+import { useApp } from './providers';
 
 /* ---------------------------------------------------------------- badges */
 
@@ -30,10 +31,11 @@ const STATUS_CLASS: Record<OrderStatus, string> = {
 
 /** Colour is never the only signal — every badge carries an icon and a word. */
 export function StatusBadge({ status, className = '' }: { status: OrderStatus; className?: string }) {
+  const { t } = useApp();
   return (
     <span className={`chip ${STATUS_CLASS[status]} ${className}`}>
       <span aria-hidden>{STATUS_ICON[status]}</span>
-      {STATUS_LABEL[status]}
+      {t(STATUS_KEY[status])}
     </span>
   );
 }
@@ -51,14 +53,18 @@ const URGENCY_CLASS: Record<Urgency, string> = {
 };
 
 export function UrgencyBadge({ order }: { order: Pick<OrderView, 'urgency' | 'daysLate' | 'daysRemaining'> }) {
+  const { t } = useApp();
   const { urgency, daysLate, daysRemaining } = order;
-  let text = URGENCY_LABEL[urgency];
-  if (daysLate > 0) text = `${URGENCY_LABEL[urgency]} · ${daysLate} ${daysLate === 1 ? 'day' : 'days'}`;
-  else if (urgency === 'upcoming' && daysRemaining !== null) text = `${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'} left`;
+  let text = t(URGENCY_KEY[urgency]);
+  if (daysLate > 0) {
+    text = `${t('overdue')} · ${daysLate === 1 ? t('day_late') : t('days_late', { n: daysLate })}`;
+  } else if (urgency === 'upcoming' && daysRemaining !== null) {
+    text = daysRemaining === 1 ? t('day_left') : t('days_left', { n: daysRemaining });
+  }
   return (
     <span className={`chip ${URGENCY_CLASS[urgency]}`}>
       <span aria-hidden>{URGENCY_ICON[urgency]}</span>
-      {urgency === 'critical' || urgency === 'high' || urgency === 'late' ? `OVERDUE · ${daysLate} ${daysLate === 1 ? 'DAY' : 'DAYS'}` : text}
+      {text}
     </span>
   );
 }
@@ -71,10 +77,11 @@ const BALANCE_CLASS: Record<BalanceStatus, string> = {
 };
 
 export function BalanceBadge({ status }: { status: BalanceStatus }) {
+  const { t } = useApp();
   return (
     <span className={`chip ${BALANCE_CLASS[status]}`}>
       <span aria-hidden>{BALANCE_ICON[status]}</span>
-      {BALANCE_LABEL[status]}
+      {t(BALANCE_KEY[status])}
     </span>
   );
 }
@@ -86,12 +93,15 @@ export function Tag({ name }: { name: string }) {
 /* --------------------------------------------------------------- progress */
 
 export function StatusProgress({ status, percent }: { status: OrderStatus; percent: number }) {
+  const { t } = useApp();
   const index = STATUS_FLOW.indexOf(status);
   return (
     <div>
       <div className="mb-2 flex items-baseline justify-between">
-        <span className="label">Order Progress</span>
-        <span className="num text-[13px] font-bold text-gold">{status === 'cancelled' ? 'Cancelled' : `${percent}%`}</span>
+        <span className="label">{t('order_progress')}</span>
+        <span className="num text-[13px] font-bold text-gold">
+          {status === 'cancelled' ? t('status_cancelled') : `${percent}%`}
+        </span>
       </div>
       <ol className="flex items-center gap-1">
         {STATUS_FLOW.map((s, i) => {
@@ -107,14 +117,14 @@ export function StatusProgress({ status, percent }: { status: OrderStatus; perce
                 {done ? '●' : '○'}
               </span>
               <span className={`text-center text-[9px] font-semibold uppercase ${done ? 'text-ink' : 'text-muted'}`}>
-                {STATUS_LABEL[s]}
+                {t(STATUS_KEY[s])}
               </span>
             </li>
           );
         })}
       </ol>
       <p className="sr-only">
-        {status === 'cancelled' ? 'Order cancelled' : `Step ${index + 1} of ${STATUS_FLOW.length}: ${STATUS_LABEL[status]}`}
+        {status === 'cancelled' ? t('status_cancelled') : `${index + 1}/${STATUS_FLOW.length} — ${t(STATUS_KEY[status])}`}
       </p>
     </div>
   );
@@ -154,6 +164,7 @@ export function CoverThumb({
 /* ------------------------------------------------------------- order card */
 
 export function OrderCard({ order, currency = 'AED' }: { order: OrderView; currency?: string }) {
+  const { t } = useApp();
   const late = order.isOverdue;
   return (
     <Link
@@ -179,11 +190,11 @@ export function OrderCard({ order, currency = 'AED' }: { order: OrderView; curre
 
           <dl className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 text-[12px]">
             <div className="flex gap-1">
-              <dt className="text-muted">Expected</dt>
+              <dt className="text-muted">{t('expected')}</dt>
               <dd className="num font-semibold text-ink">{formatWeight(order.expectedWeightMg)} g</dd>
             </div>
             <div className="flex gap-1">
-              <dt className="text-muted">Actual</dt>
+              <dt className="text-muted">{t('actual')}</dt>
               <dd className="num font-semibold text-ink">
                 {order.actualWeightMg === null ? '—' : `${formatWeight(order.actualWeightMg)} g`}
               </dd>
@@ -206,10 +217,12 @@ export function OrderCard({ order, currency = 'AED' }: { order: OrderView; curre
 
       <div className="mt-2.5 flex items-center justify-between border-t border-line/70 pt-2 text-[12px]">
         <span className="text-muted">
-          Delivery <span className="num font-semibold text-ink">{dubaiShort(order.expectedDeliveryDate)}</span>
+          {t('delivery')} <span className="num font-semibold text-ink">{dubaiShort(order.expectedDeliveryDate)}</span>
         </span>
         <span className={order.remainingBalanceFils > 0 ? 'font-bold text-bad' : 'font-semibold text-ok'}>
-          {order.remainingBalanceFils > 0 ? `Balance ${currency} ${formatMoney(order.remainingBalanceFils)}` : 'Paid in full'}
+          {order.remainingBalanceFils > 0
+            ? `${t('balance')} ${currency} ${formatMoney(order.remainingBalanceFils)}`
+            : t('paid_in_full')}
         </span>
       </div>
     </Link>

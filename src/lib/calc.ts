@@ -2,6 +2,7 @@
  * Pure order calculations. Everything here is integer maths on fils and
  * milligrams, so a total is reproducible and never drifts.
  */
+import type { DictKey } from '@/i18n/dict';
 import { applyBp, goldValueFils, mulDiv, sum } from './num';
 import { diffDays, dubaiDate } from './date';
 import {
@@ -99,11 +100,11 @@ export function balanceOf(
   return { totalFils, paymentsFils, exchangeFils, totalPaidFils, remainingFils, creditFils, status };
 }
 
-export const BALANCE_LABEL: Record<BalanceStatus, string> = {
-  paid: 'Paid',
-  partial: 'Partially Paid',
-  unpaid: 'Not Paid',
-  credit: 'Customer Credit',
+export const BALANCE_KEY: Record<BalanceStatus, DictKey> = {
+  paid: 'balance_paid',
+  partial: 'balance_partial',
+  unpaid: 'balance_unpaid',
+  credit: 'balance_credit',
 };
 
 export const BALANCE_ICON: Record<BalanceStatus, string> = {
@@ -151,10 +152,10 @@ export function compareWeight(
   return { differenceMg, verdict, minimumMg: min, maximumMg: max };
 }
 
-export const WEIGHT_VERDICT_LABEL: Record<WeightVerdict, string> = {
-  within: 'Within Tolerance',
-  slight: 'Slight Difference',
-  outside: 'Outside Expected Range',
+export const WEIGHT_VERDICT_KEY: Record<WeightVerdict, DictKey> = {
+  within: 'within_tolerance',
+  slight: 'slight_difference',
+  outside: 'outside_range',
 };
 
 /* -------------------------------------------------------------- urgency */
@@ -234,7 +235,7 @@ export function allowedTransitions(status: OrderStatus): OrderStatus[] {
 
 export interface OrderWarning {
   code: string;
-  text: string;
+  key: DictKey;
   severity: 'high' | 'medium' | 'low';
 }
 
@@ -258,27 +259,27 @@ export function warningsFor(o: WarningInput): OrderWarning[] {
   const open = !isClosed(o.status);
 
   if (open && !o.expectedDeliveryDate) {
-    out.push({ code: 'no_delivery_date', text: 'Order has no expected delivery date.', severity: 'medium' });
+    out.push({ code: 'no_delivery_date', key: 'warn_no_delivery_date', severity: 'medium' });
   }
   if (open && o.expectedDeliveryDate && diffDays(o.expectedDeliveryDate, today) < 0) {
-    out.push({ code: 'past_due', text: 'Expected delivery date has passed.', severity: 'high' });
+    out.push({ code: 'past_due', key: 'warn_past_due', severity: 'high' });
   }
   if (o.status === 'maker' && o.expectedReadyDate && diffDays(o.expectedReadyDate, today) < 0) {
-    out.push({ code: 'maker_late', text: 'Maker deadline has passed.', severity: 'high' });
+    out.push({ code: 'maker_late', key: 'warn_maker_late', severity: 'high' });
   }
   if (o.status === 'traveler' && o.departureDate && diffDays(o.departureDate, today) < 0) {
-    out.push({ code: 'traveler_departed', text: 'Traveler departure date passed but the order is still marked Traveler.', severity: 'high' });
+    out.push({ code: 'traveler_departed', key: 'warn_traveler_departed', severity: 'high' });
   }
   if (o.weightVerdict === 'outside') {
-    out.push({ code: 'weight_off', text: 'Actual weight differs significantly from the expected weight.', severity: 'high' });
+    out.push({ code: 'weight_off', key: 'warn_weight_off', severity: 'high' });
   }
   if (o.remainingFils > 0 && o.status === 'delivered') {
-    out.push({ code: 'delivered_unpaid', text: 'Order was delivered with a balance still outstanding.', severity: 'high' });
+    out.push({ code: 'delivered_unpaid', key: 'warn_delivered_unpaid', severity: 'high' });
   } else if (o.remainingFils > 0 && open) {
-    out.push({ code: 'balance_due', text: 'Customer still has an unpaid balance.', severity: 'medium' });
+    out.push({ code: 'balance_due', key: 'warn_balance_due', severity: 'medium' });
   }
   if (!o.coverMediaId && o.mediaCount === 0) {
-    out.push({ code: 'no_photo', text: 'Order has no product photo.', severity: 'low' });
+    out.push({ code: 'no_photo', key: 'warn_no_photo', severity: 'low' });
   }
   return out;
 }

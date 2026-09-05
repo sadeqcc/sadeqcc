@@ -78,7 +78,7 @@ const blank = (today: string): FormState => ({
 });
 
 export default function NewOrderPage() {
-  const { settings, toast, confirm } = useApp();
+  const { settings, toast, confirm, t } = useApp();
   const router = useRouter();
   const today = dubaiDate();
 
@@ -101,13 +101,13 @@ export default function NewOrderPage() {
     if (!d) return;
     void (async () => {
       const c = await confirm({
-        title: 'Restore your unsaved order?',
-        body: `A draft was auto-saved on this device. Continue where you left off, or start fresh.`,
-        confirmLabel: 'Restore draft',
+        title: t('restore_draft_title'),
+        body: t('restore_draft_body'),
+        confirmLabel: t('restore_draft_ok'),
       });
       if (c.ok) {
         setForm({ ...blank(today), ...d.data });
-        toast('Draft restored', 'info');
+        toast(t('draft_restored'), 'info');
       } else {
         drafts.clear(DRAFT_KEY);
       }
@@ -164,12 +164,12 @@ export default function NewOrderPage() {
   const submit = useCallback(
     async (acknowledgeDuplicate = false) => {
       const nextErrors: Record<string, string> = {};
-      if (!form.customerId) nextErrors.customerId = 'Choose or create a customer';
-      if (!form.productName.trim()) nextErrors.productName = 'Product name is required';
-      if (!parsed.expectedWeightMg) nextErrors.expectedWeight = 'Enter the expected weight';
+      if (!form.customerId) nextErrors.customerId = t('customer_required');
+      if (!form.productName.trim()) nextErrors.productName = t('product_required');
+      if (!parsed.expectedWeightMg) nextErrors.expectedWeight = t('weight_required');
       setErrors(nextErrors);
       if (Object.keys(nextErrors).length) {
-        toast('Check the highlighted fields', 'error');
+        toast(t('check_fields'), 'error');
         return;
       }
 
@@ -217,25 +217,25 @@ export default function NewOrderPage() {
         }
 
         drafts.clear(DRAFT_KEY);
-        toast(`Order ${res.order.orderNumber} created`);
+        toast(t('order_created', { number: res.order.orderNumber }));
         router.replace(`/orders/${res.order.id}`);
       } catch (e) {
         if (e instanceof ApiError && e.code === 'possible_duplicate') {
           const list = (e.extra?.duplicates as { orderNumber: string; orderDate: string }[] | undefined) ?? [];
           const c = await confirm({
-            title: 'Possible duplicate order',
-            body: `This customer has a similar recent order: ${list.map((d) => `${d.orderNumber} (${d.orderDate})`).join(', ')}. Create it anyway?`,
-            confirmLabel: 'Create anyway',
+            title: t('duplicate_title'),
+            body: t('duplicate_body', { list: list.map((d) => `${d.orderNumber} (${d.orderDate})`).join('، ') }),
+            confirmLabel: t('duplicate_ok'),
           });
           if (c.ok) await submit(true);
           return;
         }
         if (e instanceof ApiError && e.fields) {
           setErrors(e.fields);
-          toast('Check the highlighted fields', 'error');
+          toast(t('check_fields'), 'error');
           return;
         }
-        toast('Could not create the order', 'error');
+        toast(t('could_not_create'), 'error');
       } finally {
         setSaving(false);
       }
@@ -252,20 +252,20 @@ export default function NewOrderPage() {
       }}
     >
       <div className="flex items-center justify-between">
-        <h2 className="text-[18px] font-extrabold text-ink">New Order</h2>
+        <h2 className="text-[18px] font-extrabold text-ink">{t('new_order')}</h2>
         <span className="flex items-center gap-1 text-[11px] text-muted">
           <Save className="h-3.5 w-3.5" />
-          {saving ? 'Saving…' : savedAt ? 'Draft saved' : 'Auto-save on'}
+          {saving ? t('saving') : savedAt ? t('draft_saved') : t('autosave_on')}
         </span>
       </div>
 
       {/* Section 47 — only the essentials are shown first. */}
       <Card>
-        <CardTitle title="Essentials" subtitle="Enough to open the order at the counter" />
+        <CardTitle title={t('essentials')} subtitle={t('essentials_hint')} />
         <div className="space-y-3">
           <EntityPicker
             entity="customers"
-            label="Customer"
+            label={t('customer')}
             required
             value={form.customerId}
             error={errors.customerId}
@@ -276,33 +276,33 @@ export default function NewOrderPage() {
             }}
           />
 
-          <Field label="Product name" required error={errors.productName}>
-            <TextInput value={form.productName} onChange={(v) => set('productName', v)} placeholder="Indian Necklace" />
+          <Field label={t('product_name')} required error={errors.productName}>
+            <TextInput value={form.productName} onChange={(v) => set('productName', v)} />
           </Field>
 
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Karat">
+            <Field label={t('karat')}>
               <Select
                 value={form.karat}
                 onChange={(v) => set('karat', v)}
                 options={(settings.karats.length ? settings.karats : [...KARATS]).map((k) => ({ value: k, label: k }))}
               />
             </Field>
-            <Field label="Expected weight" required error={errors.expectedWeight}>
+            <Field label={t('expected_weight')} required error={errors.expectedWeight}>
               <NumberInput value={form.expectedWeight} onChange={(v) => set('expectedWeight', v)} suffix="g" placeholder="45.000" />
             </Field>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Deposit">
+            <Field label={t('deposit')}>
               <NumberInput value={form.deposit} onChange={(v) => set('deposit', v)} suffix={settings.currency} />
             </Field>
-            <Field label="Expected delivery">
+            <Field label={t('expected_delivery')}>
               <DateInput value={form.expectedDeliveryDate} onChange={(v) => set('expectedDeliveryDate', v)} />
             </Field>
           </div>
 
-          <Field label="Photo">
+          <Field label={t('photo')}>
             <PendingMediaPicker files={pendingMedia} onChange={setPendingMedia} />
           </Field>
         </div>
@@ -315,23 +315,23 @@ export default function NewOrderPage() {
         aria-expanded={advanced}
       >
         {advanced ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-        More Details
+        {t('more_details')}
       </button>
 
       {advanced ? (
         <>
           <Card>
-            <CardTitle title="Product" />
+            <CardTitle title={t('product')} />
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Category">
+                <Field label={t('category')}>
                   <Select
                     value={form.category}
                     onChange={(v) => set('category', v)}
                     options={(settings.categories.length ? settings.categories : [...CATEGORIES]).map((c) => ({ value: c, label: c }))}
                   />
                 </Field>
-                <Field label="Style">
+                <Field label={t('style')}>
                   <Select
                     value={form.style}
                     onChange={(v) => set('style', v)}
@@ -340,20 +340,20 @@ export default function NewOrderPage() {
                 </Field>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Minimum weight" hint="Optional tolerance band">
+                <Field label={t('minimum_weight')} hint={t('tolerance_hint')}>
                   <NumberInput value={form.minimumWeight} onChange={(v) => set('minimumWeight', v)} suffix="g" />
                 </Field>
-                <Field label="Maximum weight">
+                <Field label={t('maximum_weight')}>
                   <NumberInput value={form.maximumWeight} onChange={(v) => set('maximumWeight', v)} suffix="g" />
                 </Field>
               </div>
               {parsed.expectedWeightMg > 0 ? (
                 <p className="rounded-xl bg-surface2 px-3 py-2 text-[12px] text-muted">
-                  Expected <span className="num font-semibold text-ink">{formatWeight(parsed.expectedWeightMg)} g</span>
+                  {t('expected')} <span className="num font-semibold text-ink">{formatWeight(parsed.expectedWeightMg)} g</span>
                   {parsed.minimumWeightMg !== null && parsed.maximumWeightMg !== null ? (
                     <>
                       {' '}
-                      · Range{' '}
+                      · {t('range')}{' '}
                       <span className="num font-semibold text-ink">
                         {formatWeight(parsed.minimumWeightMg)} – {formatWeight(parsed.maximumWeightMg)} g
                       </span>
@@ -361,61 +361,61 @@ export default function NewOrderPage() {
                   ) : null}
                 </p>
               ) : null}
-              <Field label="Manual reference number" hint="Leave empty to auto-number as GO-YYYY-0001">
+              <Field label={t('manual_reference')} hint={t('manual_reference_hint', { example: `${settings.orderNumberPrefix}-${today.slice(0, 4)}-0001` })}>
                 <TextInput value={form.referenceNo} onChange={(v) => set('referenceNo', v)} />
               </Field>
             </div>
           </Card>
 
           <Card>
-            <CardTitle title="Price" subtitle="Every total is recalculated live" />
+            <CardTitle title={t('price')} subtitle={t('price_hint')} />
             <div className="space-y-3">
-              <Field label="Gold rate type">
+              <Field label={t('gold_rate_type')}>
                 <Segmented
                   value={form.goldRateMode}
                   onChange={(v) => set('goldRateMode', v)}
                   options={[
-                    { value: 'per_gram', label: 'Per gram' },
-                    { value: 'per_ounce', label: 'Per ounce' },
-                    { value: 'manual', label: 'Manual' },
+                    { value: 'per_gram', label: t('per_gram') },
+                    { value: 'per_ounce', label: t('per_ounce') },
+                    { value: 'manual', label: t('manual') },
                   ]}
                 />
               </Field>
 
               {form.goldRateMode === 'manual' ? (
-                <Field label="Gold value" hint="Type the total gold value directly">
+                <Field label={t('gold_value')} hint={t('gold_value_hint')}>
                   <NumberInput value={form.goldValueOverride} onChange={(v) => set('goldValueOverride', v)} suffix={settings.currency} />
                 </Field>
               ) : (
-                <Field label={form.goldRateMode === 'per_ounce' ? 'Rate per ounce' : 'Rate per gram'}>
+                <Field label={form.goldRateMode === 'per_ounce' ? t('rate_per_ounce') : t('rate_per_gram')}>
                   <NumberInput value={form.goldRate} onChange={(v) => set('goldRate', v)} suffix={settings.currency} />
                 </Field>
               )}
 
-              <Field label="Making charge">
+              <Field label={t('making_charge')}>
                 <Segmented
                   value={form.makingChargeMode}
                   onChange={(v) => set('makingChargeMode', v)}
                   options={[
-                    { value: 'per_gram', label: 'Per gram' },
-                    { value: 'fixed', label: 'Fixed amount' },
+                    { value: 'per_gram', label: t('per_gram') },
+                    { value: 'fixed', label: t('making_fixed') },
                   ]}
                 />
               </Field>
-              <NumberInput value={form.makingCharge} onChange={(v) => set('makingCharge', v)} suffix={settings.currency} ariaLabel="Making charge amount" />
+              <NumberInput value={form.makingCharge} onChange={(v) => set('makingCharge', v)} suffix={settings.currency} ariaLabel={t('making_charge')} />
 
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Other charges">
+                <Field label={t('other_charges')}>
                   <NumberInput value={form.otherCharges} onChange={(v) => set('otherCharges', v)} suffix={settings.currency} />
                 </Field>
-                <Field label="Discount">
+                <Field label={t('discount')}>
                   <NumberInput value={form.discount} onChange={(v) => set('discount', v)} suffix={settings.currency} />
                 </Field>
               </div>
-              <Field label="VAT %" hint={`Shop default ${settings.vatPercent}%`}>
+              <Field label={t('vat')} hint={t('vat_hint', { n: settings.vatPercent })}>
                 <NumberInput value={form.vatPercent} onChange={(v) => set('vatPercent', v)} suffix="%" />
               </Field>
-              <Field label="Deposit method">
+              <Field label={t('deposit_method')}>
                 <Select
                   value={form.depositMethod}
                   onChange={(v) => set('depositMethod', v)}
@@ -426,18 +426,18 @@ export default function NewOrderPage() {
           </Card>
 
           <Card>
-            <CardTitle title="Assignment" />
+            <CardTitle title={t('assignment')} />
             <div className="space-y-3">
-              <EntityPicker entity="makers" label="Maker" value={form.makerId} onChange={(id) => set('makerId', id)} />
-              <EntityPicker entity="travelers" label="Traveler" value={form.travelerId} onChange={(id) => set('travelerId', id)} />
-              <Field label="Destination">
-                <TextInput value={form.destination} onChange={(v) => set('destination', v)} placeholder="Bamako, Mali" />
+              <EntityPicker entity="makers" label={t('maker')} value={form.makerId} onChange={(id) => set('makerId', id)} />
+              <EntityPicker entity="travelers" label={t('traveler')} value={form.travelerId} onChange={(id) => set('travelerId', id)} />
+              <Field label={t('destination')}>
+                <TextInput value={form.destination} onChange={(v) => set('destination', v)} />
               </Field>
               <div className="grid grid-cols-2 gap-2">
-                <Field label="Order date">
+                <Field label={t('order_date')}>
                   <DateInput value={form.orderDate} onChange={(v) => set('orderDate', v)} />
                 </Field>
-                <Field label="Expected ready">
+                <Field label={t('expected_ready')}>
                   <DateInput value={form.expectedReadyDate} onChange={(v) => set('expectedReadyDate', v)} />
                 </Field>
               </div>
@@ -445,12 +445,12 @@ export default function NewOrderPage() {
           </Card>
 
           <Card>
-            <CardTitle title="Notes & tags" />
+            <CardTitle title={t('notes_tags')} />
             <div className="space-y-3">
-              <Field label="Notes">
-                <TextArea value={form.notes} onChange={(v) => set('notes', v)} placeholder="Anything the shop needs to remember" />
+              <Field label={t('notes')}>
+                <TextArea value={form.notes} onChange={(v) => set('notes', v)} />
               </Field>
-              <Field label="Tags">
+              <Field label={t('tags')}>
                 <TagPicker value={form.tags} onChange={(v) => set('tags', v)} suggestions={DEFAULT_TAGS} />
               </Field>
             </div>
@@ -459,21 +459,21 @@ export default function NewOrderPage() {
       ) : null}
 
       <Card>
-        <CardTitle title="Summary" />
+        <CardTitle title={t('summary')} />
         <dl className="space-y-1 text-[13px]">
-          <Line label="Gold value" value={`${settings.currency} ${formatMoney(pricing.goldValueFils)}`} />
-          <Line label="Making charge" value={`${settings.currency} ${formatMoney(pricing.makingFils)}`} />
-          {pricing.otherChargesFils ? <Line label="Other charges" value={`${settings.currency} ${formatMoney(pricing.otherChargesFils)}`} /> : null}
-          {pricing.discountFils ? <Line label="Discount" value={`− ${settings.currency} ${formatMoney(pricing.discountFils)}`} /> : null}
-          {pricing.vatFils ? <Line label="VAT" value={`${settings.currency} ${formatMoney(pricing.vatFils)}`} /> : null}
-          <Line label="Total" value={`${settings.currency} ${formatMoney(pricing.totalFils)}`} strong />
-          <Line label="Deposit" value={`${settings.currency} ${formatMoney(parsed.depositFils)}`} />
-          <Line label="Remaining" value={`${settings.currency} ${formatMoney(remaining)}`} strong tone={remaining > 0 ? 'bad' : 'ok'} />
+          <Line label={t('gold_value')} value={`${settings.currency} ${formatMoney(pricing.goldValueFils)}`} />
+          <Line label={t('making_charge')} value={`${settings.currency} ${formatMoney(pricing.makingFils)}`} />
+          {pricing.otherChargesFils ? <Line label={t('other_charges')} value={`${settings.currency} ${formatMoney(pricing.otherChargesFils)}`} /> : null}
+          {pricing.discountFils ? <Line label={t('discount')} value={`− ${settings.currency} ${formatMoney(pricing.discountFils)}`} /> : null}
+          {pricing.vatFils ? <Line label={t('vat')} value={`${settings.currency} ${formatMoney(pricing.vatFils)}`} /> : null}
+          <Line label={t('total')} value={`${settings.currency} ${formatMoney(pricing.totalFils)}`} strong />
+          <Line label={t('deposit')} value={`${settings.currency} ${formatMoney(parsed.depositFils)}`} />
+          <Line label={t('remaining')} value={`${settings.currency} ${formatMoney(remaining)}`} strong tone={remaining > 0 ? 'bad' : 'ok'} />
         </dl>
         {!form.expectedDeliveryDate ? (
           <p className="mt-3 flex items-start gap-2 rounded-xl bg-warn/10 px-3 py-2 text-[12px] text-warn">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            No expected delivery date — this order will not appear in the overdue checks.
+            {t('no_delivery_date_warning')}
           </p>
         ) : null}
       </Card>
@@ -481,7 +481,7 @@ export default function NewOrderPage() {
       <div className="sticky bottom-24 z-30">
         <button type="submit" className="btn-primary w-full shadow-pop" disabled={saving}>
           {saving ? <Spinner /> : null}
-          Create Order
+          {t('create_order')}
         </button>
       </div>
     </form>

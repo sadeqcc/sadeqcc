@@ -9,38 +9,39 @@ import { OrderCard, OrderCardSkeleton } from '@/components/bits';
 import { EmptyState, ErrorState, Modal, PullToRefresh, SearchInput, Select, Spinner, useDebouncedValue } from '@/components/ui';
 import { apiGet, cache } from '@/lib/client';
 import type { OrderView } from '@/lib/types';
+import type { DictKey } from '@/i18n/dict';
 
 const QUICK_FILTERS = [
-  { key: 'all', label: 'All' },
-  { key: 'overdue', label: '🔴 Overdue' },
-  { key: 'today', label: 'Today' },
-  { key: 'tomorrow', label: 'Tomorrow' },
-  { key: 'maker', label: 'Maker' },
-  { key: 'ready', label: 'Ready' },
-  { key: 'traveler', label: 'Traveler' },
-  { key: 'arrived', label: 'Arrived' },
-  { key: 'delivered', label: 'Delivered' },
-  { key: 'balance', label: 'Balance Due' },
-] as const;
+  { key: 'all', label: 'filter_all', icon: '' },
+  { key: 'overdue', label: 'filter_overdue', icon: '🔴 ' },
+  { key: 'today', label: 'filter_today', icon: '' },
+  { key: 'tomorrow', label: 'filter_tomorrow', icon: '' },
+  { key: 'maker', label: 'filter_maker', icon: '' },
+  { key: 'ready', label: 'filter_ready', icon: '' },
+  { key: 'traveler', label: 'filter_traveler', icon: '' },
+  { key: 'arrived', label: 'filter_arrived', icon: '' },
+  { key: 'delivered', label: 'filter_delivered', icon: '' },
+  { key: 'balance', label: 'filter_balance', icon: '' },
+] as const satisfies readonly { key: string; label: DictKey; icon: string }[];
 
 const SORTS = [
-  { value: 'priority', label: 'Priority (overdue first)' },
-  { value: 'newest', label: 'Newest' },
-  { value: 'oldest', label: 'Oldest' },
-  { value: 'delivery', label: 'Expected delivery' },
-  { value: 'weight_desc', label: 'Largest weight' },
-  { value: 'weight_asc', label: 'Smallest weight' },
-  { value: 'balance', label: 'Highest balance' },
-  { value: 'customer', label: 'Customer name' },
-];
+  { value: 'priority', label: 'sort_priority' },
+  { value: 'newest', label: 'sort_newest' },
+  { value: 'oldest', label: 'sort_oldest' },
+  { value: 'delivery', label: 'sort_delivery' },
+  { value: 'weight_desc', label: 'sort_weight_desc' },
+  { value: 'weight_asc', label: 'sort_weight_asc' },
+  { value: 'balance', label: 'sort_balance' },
+  { value: 'customer', label: 'sort_customer' },
+] as const satisfies readonly { value: string; label: DictKey }[];
 
-const EMPTY_STATES: Record<string, { title: string; text: string; icon: string }> = {
-  overdue: { title: '🎉 No Overdue Orders', text: 'Everything is on schedule.', icon: '🎉' },
-  ready: { title: 'No Orders Ready', text: 'Orders will appear here when makers finish them.', icon: '✅' },
-  traveler: { title: 'No Orders Travelling', text: 'Assign a traveler when an order is ready to move.', icon: '✈️' },
-  arrived: { title: 'No Arrived Orders', text: 'Arrived orders wait here until the customer receives them.', icon: '📍' },
-  balance: { title: 'No Outstanding Balances', text: 'Every order is fully paid.', icon: '🟢' },
-  all: { title: 'No Orders Yet', text: 'Create your first gold order.', icon: '🥇' },
+const EMPTY_STATES: Record<string, { title: DictKey; text: DictKey; icon: string }> = {
+  overdue: { title: 'empty_overdue_title', text: 'empty_overdue_text', icon: '🎉' },
+  ready: { title: 'empty_ready_title', text: 'empty_ready_text', icon: '✅' },
+  traveler: { title: 'empty_traveler_title', text: 'empty_traveler_text', icon: '✈️' },
+  arrived: { title: 'empty_arrived_title', text: 'empty_arrived_text', icon: '📍' },
+  balance: { title: 'empty_balance_title', text: 'empty_balance_text', icon: '🟢' },
+  all: { title: 'empty_orders_title', text: 'empty_orders_text', icon: '🥇' },
 };
 
 const PAGE_SIZE = 25;
@@ -63,7 +64,7 @@ export default function OrdersPage() {
 }
 
 function OrdersList() {
-  const { settings, toast } = useApp();
+  const { settings, toast, t } = useApp();
   const router = useRouter();
   const params = useSearchParams();
 
@@ -169,11 +170,11 @@ function OrdersList() {
     <PullToRefresh
       onRefresh={async () => {
         await load(0);
-        toast('Up to date', 'info');
+        toast(t('up_to_date'), 'info');
       }}
     >
       <div className="space-y-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Search orders, customers, phone, maker…" />
+        <SearchInput value={search} onChange={setSearch} placeholder={t('search_orders')} />
 
         <div className="scroll-x no-print">
           {QUICK_FILTERS.map((f) => (
@@ -186,7 +187,8 @@ function OrdersList() {
               }`}
               aria-pressed={quick === f.key}
             >
-              {f.label}
+              {f.icon}
+              {t(f.label)}
             </button>
           ))}
         </div>
@@ -194,30 +196,35 @@ function OrdersList() {
         <div className="flex items-center gap-2">
           <button type="button" className="btn-ghost btn-sm flex-1" onClick={() => setShowFilters(true)}>
             <Filter className="h-4 w-4" />
-            Filters{activeFilterCount ? ` (${activeFilterCount})` : ''}
+            {t('filters')}{activeFilterCount ? ` (${activeFilterCount})` : ''}
           </button>
           <div className="flex-1">
-            <Select value={sort} onChange={setSort} options={SORTS} ariaLabel="Sort orders" />
+            <Select
+              value={sort}
+              onChange={setSort}
+              options={SORTS.map((o) => ({ value: o.value, label: t(o.label) }))}
+              ariaLabel={t('sort_label')}
+            />
           </div>
         </div>
 
         <p className="text-[12px] text-muted">
-          {loading ? 'Loading…' : `${total} ${total === 1 ? 'order' : 'orders'}`}
-          {sort === 'priority' ? ' · overdue pinned to the top' : ''}
+          {loading ? t('loading') : total === 1 ? t('order_count_1') : t('orders_count', { n: total })}
+          {sort === 'priority' ? ` · ${t('overdue_pinned')}` : ''}
         </p>
 
         {loading ? (
           <ListSkeleton />
         ) : error ? (
-          <ErrorState text="Could not load orders." onRetry={() => void load(0)} />
+          <ErrorState text={t('could_not_load_orders')} onRetry={() => void load(0)} />
         ) : orders.length === 0 ? (
           <EmptyState
-            title={empty.title}
-            text={empty.text}
+            title={t(empty.title)}
+            text={t(empty.text)}
             icon={empty.icon}
             action={
               <Link href="/orders/new" className="btn-primary">
-                <Plus className="h-4 w-4" /> New Order
+                <Plus className="h-4 w-4" /> {t('new_order')}
               </Link>
             }
           />
@@ -231,7 +238,7 @@ function OrdersList() {
             {orders.length < total ? (
               <button type="button" className="btn-ghost w-full" onClick={() => void load(offset + PAGE_SIZE)} disabled={loadingMore}>
                 {loadingMore ? <Spinner /> : null}
-                Load more ({orders.length} of {total})
+                {t('load_more', { shown: orders.length, total })}
               </button>
             ) : null}
           </>
@@ -241,7 +248,7 @@ function OrdersList() {
       <Modal
         open={showFilters}
         onClose={() => setShowFilters(false)}
-        title="Filters"
+        title={t('filters')}
         footer={
           <>
             <button
@@ -254,77 +261,77 @@ function OrdersList() {
                 })
               }
             >
-              Clear all
+              {t('clear_all')}
             </button>
             <button type="button" className="btn-primary flex-1" onClick={() => setShowFilters(false)}>
-              Apply
+              {t('apply')}
             </button>
           </>
         }
       >
-        <FilterRow label="Karat">
+        <FilterRow label={t('karat')}>
           <Select
             value={filters.karat}
             onChange={(v) => setFilters((f) => ({ ...f, karat: v }))}
-            placeholder="Any karat"
+            placeholder={t('any_karat')}
             options={options.karats.map((k) => ({ value: k, label: k }))}
           />
         </FilterRow>
-        <FilterRow label="Category">
+        <FilterRow label={t('category')}>
           <Select
             value={filters.category}
             onChange={(v) => setFilters((f) => ({ ...f, category: v }))}
-            placeholder="Any category"
+            placeholder={t('any_category')}
             options={options.categories.map((k) => ({ value: k, label: k }))}
           />
         </FilterRow>
-        <FilterRow label="Style">
+        <FilterRow label={t('style')}>
           <Select
             value={filters.style}
             onChange={(v) => setFilters((f) => ({ ...f, style: v }))}
-            placeholder="Any style"
+            placeholder={t('any_style')}
             options={options.styles.map((k) => ({ value: k, label: k }))}
           />
         </FilterRow>
-        <FilterRow label="Maker">
+        <FilterRow label={t('maker')}>
           <Select
             value={filters.makerId}
             onChange={(v) => setFilters((f) => ({ ...f, makerId: v }))}
-            placeholder="Any maker"
+            placeholder={t('any_maker')}
             options={options.makers.map((m) => ({ value: m.id, label: m.name }))}
           />
         </FilterRow>
-        <FilterRow label="Traveler">
+        <FilterRow label={t('traveler')}>
           <Select
             value={filters.travelerId}
             onChange={(v) => setFilters((f) => ({ ...f, travelerId: v }))}
-            placeholder="Any traveler"
+            placeholder={t('any_traveler')}
             options={options.travelers.map((m) => ({ value: m.id, label: m.name }))}
           />
         </FilterRow>
-        <FilterRow label="Destination">
+        <FilterRow label={t('destination')}>
           <Select
             value={filters.destination}
             onChange={(v) => setFilters((f) => ({ ...f, destination: v }))}
-            placeholder="Any destination"
+            placeholder={t('any_destination')}
             options={options.destinations.map((d) => ({ value: d, label: d }))}
           />
         </FilterRow>
-        <FilterRow label="Payment status">
+        <FilterRow label={t('payment_status')}>
           <Select
             value={filters.balance}
             onChange={(v) => setFilters((f) => ({ ...f, balance: v }))}
-            placeholder="Any payment status"
+            placeholder={t('any_payment')}
             options={[
-              { value: 'due', label: 'Balance due' },
-              { value: 'paid', label: 'Paid in full' },
-              { value: 'partial', label: 'Partially paid' },
-              { value: 'unpaid', label: 'Nothing paid' },
+              { value: 'due', label: t('balance_due') },
+              { value: 'paid', label: t('paid_in_full') },
+              { value: 'partial', label: t('balance_partial') },
+              { value: 'unpaid', label: t('nothing_paid') },
             ]}
           />
         </FilterRow>
         <div className="grid grid-cols-2 gap-2">
-          <FilterRow label="Delivery from">
+          <FilterRow label={t('delivery_from')}>
             <input
               className="input num"
               type="date"
@@ -332,7 +339,7 @@ function OrdersList() {
               onChange={(e) => setFilters((f) => ({ ...f, deliveryFrom: e.target.value }))}
             />
           </FilterRow>
-          <FilterRow label="Delivery to">
+          <FilterRow label={t('delivery_to')}>
             <input
               className="input num"
               type="date"

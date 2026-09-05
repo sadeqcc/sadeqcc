@@ -35,7 +35,7 @@ export function MediaGallery({
   onChange: (media: OrderMedia[], coverMediaId?: string | null) => void;
   readOnly?: boolean;
 }) {
-  const { toast, confirm } = useApp();
+  const { toast, confirm, t } = useApp();
   const cameraRef = useRef<HTMLInputElement>(null);
   const libraryRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -49,7 +49,7 @@ export function MediaGallery({
       let latest = media;
       for (const file of Array.from(files).slice(0, 10)) {
         if (file.size > 20_000_000) {
-          toast(`${file.name} is larger than 20 MB`, 'error');
+          toast(t('file_too_large', { name: file.name }), 'error');
           continue;
         }
         const payload = await buildMediaPayload(file, category, orderId);
@@ -59,9 +59,9 @@ export function MediaGallery({
         if (res) latest = res.media;
       }
       onChange(latest);
-      toast('Media saved');
+      toast(t('media_saved'));
     } catch {
-      toast('Could not save the media', 'error');
+      toast(t('could_not_save_media'), 'error');
     } finally {
       setBusy(false);
       if (cameraRef.current) cameraRef.current.value = '';
@@ -72,20 +72,20 @@ export function MediaGallery({
   const setCover = async (m: OrderMedia) => {
     await apiWrite(`/api/media/${m.id}`, { setAsCover: true }, 'PATCH', { label: 'Set cover photo' });
     onChange(media, m.id);
-    toast('Cover photo updated');
+    toast(t('cover_updated'));
   };
 
   const remove = async (m: OrderMedia) => {
     const c = await confirm({
-      title: 'Remove this file?',
-      body: 'It is archived, not destroyed — the audit log keeps the record.',
+      title: t('remove_file_title'),
+      body: t('remove_file_body'),
       danger: true,
-      confirmLabel: 'Remove',
+      confirmLabel: t('remove'),
     });
     if (!c.ok) return;
     await apiWrite(`/api/media/${m.id}?reason=${encodeURIComponent(c.reason ?? '')}`, null, 'DELETE', { label: 'Remove media' });
     onChange(media.filter((x) => x.id !== m.id), coverMediaId === m.id ? null : coverMediaId);
-    toast('File removed');
+    toast(t('media_removed'));
   };
 
   return (
@@ -95,17 +95,17 @@ export function MediaGallery({
           <Select
             value={category}
             onChange={setCategory}
-            ariaLabel="Photo category"
+            ariaLabel={t('photo_category')}
             options={MEDIA_CATEGORIES.map((c) => ({ value: c, label: c }))}
           />
           <div className="flex gap-2">
             <button type="button" className="btn-ghost btn-sm flex-1" onClick={() => cameraRef.current?.click()} disabled={busy}>
               {busy ? <Spinner /> : <Camera className="h-4 w-4" />}
-              Camera
+              {t('camera')}
             </button>
             <button type="button" className="btn-ghost btn-sm flex-1" onClick={() => libraryRef.current?.click()} disabled={busy}>
               <ImagePlus className="h-4 w-4" />
-              Library / File
+              {t('library')}
             </button>
           </div>
           <input
@@ -129,13 +129,13 @@ export function MediaGallery({
 
       {media.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line px-3 py-4 text-center text-[13px] text-muted">
-          No photos or videos yet.
+          {t('no_media')}
         </p>
       ) : (
         <ul className="grid grid-cols-3 gap-2">
           {media.map((m) => (
             <li key={m.id} className="relative">
-              <button type="button" className="block w-full" onClick={() => setViewing(m)} aria-label={`Open ${m.name}`}>
+              <button type="button" className="block w-full" onClick={() => setViewing(m)} aria-label={m.category}>
                 {m.kind === 'photo' ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -155,7 +155,7 @@ export function MediaGallery({
               </button>
               {coverMediaId === m.id ? (
                 <span className="absolute start-1 top-1 rounded-md bg-gold px-1.5 py-0.5 text-[9px] font-bold uppercase text-black">
-                  Cover
+                  {t('cover')}
                 </span>
               ) : null}
               <span className="mt-1 block truncate text-[10px] text-muted">{m.category}</span>
@@ -164,7 +164,7 @@ export function MediaGallery({
         </ul>
       )}
 
-      <Modal open={!!viewing} onClose={() => setViewing(null)} title={viewing?.category ?? 'Media'} wide>
+      <Modal open={!!viewing} onClose={() => setViewing(null)} title={viewing?.category ?? t('media')} wide>
         {viewing ? (
           <>
             {viewing.kind === 'photo' ? (
@@ -174,7 +174,7 @@ export function MediaGallery({
               <video src={`/api/media/${viewing.id}`} controls playsInline className="w-full rounded-xl border border-line" />
             ) : (
               <a href={`/api/media/${viewing.id}`} className="btn-ghost w-full" target="_blank" rel="noreferrer">
-                Open file
+                {t('open_file')}
               </a>
             )}
             <p className="text-[12px] text-muted">{viewing.name}</p>
@@ -189,7 +189,7 @@ export function MediaGallery({
                       setViewing(null);
                     }}
                   >
-                    <Star className="h-4 w-4" /> Set as cover
+                    <Star className="h-4 w-4" /> {t('set_cover')}
                   </button>
                 ) : null}
                 <button
@@ -200,7 +200,7 @@ export function MediaGallery({
                     setViewing(null);
                   }}
                 >
-                  <Trash2 className="h-4 w-4" /> Remove
+                  <Trash2 className="h-4 w-4" /> {t('remove')}
                 </button>
               </div>
             ) : null}
@@ -222,6 +222,7 @@ export function PendingMediaPicker({
   files: { id: string; name: string; preview: string; payload: Record<string, unknown> }[];
   onChange: (files: { id: string; name: string; preview: string; payload: Record<string, unknown> }[]) => void;
 }) {
+  const { t } = useApp();
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
 
@@ -229,7 +230,7 @@ export function PendingMediaPicker({
     <div className="space-y-2">
       <button type="button" className="btn-ghost btn-sm w-full" onClick={() => inputRef.current?.click()} disabled={busy}>
         {busy ? <Spinner /> : <Camera className="h-4 w-4" />}
-        Add photo
+        {t('add_photo')}
       </button>
       <input
         ref={inputRef}
@@ -264,7 +265,7 @@ export function PendingMediaPicker({
                 type="button"
                 className="absolute -end-1 -top-1 grid h-6 w-6 place-items-center rounded-full bg-bad text-white"
                 onClick={() => onChange(files.filter((x) => x.id !== f.id))}
-                aria-label={`Remove ${f.name}`}
+                aria-label={t('remove')}
               >
                 <Trash2 className="h-3 w-3" />
               </button>

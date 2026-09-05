@@ -24,7 +24,7 @@ interface CustomerRow {
 }
 
 export default function CustomersPage() {
-  const { settings, toast } = useApp();
+  const { settings, toast, t } = useApp();
   const [items, setItems] = useState<CustomerRow[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -59,16 +59,16 @@ export default function CustomersPage() {
     <PullToRefresh
       onRefresh={async () => {
         await load();
-        toast('Up to date', 'info');
+        toast(t('up_to_date'), 'info');
       }}
     >
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-[18px] font-extrabold text-ink">Customers</h2>
-          <span className="text-[12px] text-muted">{items.length} total</span>
+          <h2 className="text-[18px] font-extrabold text-ink">{t('customers')}</h2>
+          <span className="text-[12px] text-muted">{t('customers_total', { n: items.length })}</span>
         </div>
 
-        <SearchInput value={search} onChange={setSearch} placeholder="Search by name, phone or city" />
+        <SearchInput value={search} onChange={setSearch} placeholder={t('search_customers')} />
 
         {loading ? (
           <div className="space-y-2">
@@ -77,15 +77,15 @@ export default function CustomersPage() {
             ))}
           </div>
         ) : error ? (
-          <ErrorState text="Could not load customers." onRetry={() => void load()} />
+          <ErrorState text={t('could_not_load_customers')} onRetry={() => void load()} />
         ) : filtered.length === 0 ? (
           <EmptyState
-            title={search ? 'No matches' : 'No customers yet'}
-            text={search ? 'Try a different search.' : 'Customers are created as you take orders.'}
+            title={search ? t('no_matches') : t('empty_customers_title')}
+            text={search ? t('no_matches_hint') : t('empty_customers_text')}
             icon="👤"
             action={
               <Link href="/orders/new" className="btn-primary">
-                <Plus className="h-4 w-4" /> New Order
+                <Plus className="h-4 w-4" /> {t('new_order')}
               </Link>
             }
           />
@@ -107,17 +107,17 @@ export default function CustomersPage() {
                     </span>
                     <span className="mt-0.5 flex flex-wrap gap-x-3 text-[12px]">
                       <span className="text-muted">
-                        Orders <span className="num font-semibold text-ink">{c.totalOrders}</span>
+                        {t('total_orders')} <span className="num font-semibold text-ink">{c.totalOrders}</span>
                       </span>
                       <span className="text-muted">
-                        Active <span className="num font-semibold text-ink">{c.activeOrders}</span>
+                        {t('active_orders')} <span className="num font-semibold text-ink">{c.activeOrders}</span>
                       </span>
                       {c.outstandingFils > 0 ? (
                         <span className="num font-bold text-bad">
                           {settings.currency} {formatMoney(c.outstandingFils)}
                         </span>
                       ) : (
-                        <span className="font-semibold text-ok">Settled</span>
+                        <span className="font-semibold text-ok">{t('settled')}</span>
                       )}
                     </span>
                   </span>

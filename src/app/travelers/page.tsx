@@ -19,7 +19,7 @@ interface TravelerRow {
 }
 
 export default function TravelersPage() {
-  const { toast } = useApp();
+  const { toast, t } = useApp();
   const [items, setItems] = useState<TravelerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -48,19 +48,19 @@ export default function TravelersPage() {
     <PullToRefresh
       onRefresh={async () => {
         await load();
-        toast('Up to date', 'info');
+        toast(t('up_to_date'), 'info');
       }}
     >
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-[18px] font-extrabold text-ink">Travelers</h2>
-          <span className="text-[12px] text-muted">{items.length} total</span>
+          <h2 className="text-[18px] font-extrabold text-ink">{t('travelers')}</h2>
+          <span className="text-[12px] text-muted">{t('customers_total', { n: items.length })}</span>
         </div>
 
         <div key={pickerKey}>
           <EntityPicker
             entity="travelers"
-            label="Add or find a traveler"
+            label={t('add_find_traveler')}
             value={null}
             onChange={(id) => {
               setPickerKey((k) => k + 1);
@@ -77,25 +77,25 @@ export default function TravelersPage() {
             ))}
           </div>
         ) : error ? (
-          <ErrorState text="Could not load travelers." onRetry={() => void load()} />
+          <ErrorState text={t('could_not_load_travelers')} onRetry={() => void load()} />
         ) : items.length === 0 ? (
-          <EmptyState title="No travelers yet" text="Add the people who carry orders to their destination." icon="✈️" />
+          <EmptyState title={t('empty_travelers_title')} text={t('empty_travelers_text')} icon="✈️" />
         ) : (
           <ul className="space-y-2">
-            {items.map((t) => (
-              <li key={t.id}>
-                <Link href={`/travelers/${t.id}`} className="card flex items-center gap-3 p-3 transition hover:border-gold/50">
+            {items.map((tr) => (
+              <li key={tr.id}>
+                <Link href={`/travelers/${tr.id}`} className="card flex items-center gap-3 p-3 transition hover:border-gold/50">
                   <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-info/15 text-info">
                     <Plane className="h-5 w-5" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[15px] font-bold text-ink">{t.name}</span>
-                    <span className="block truncate text-[12px] text-muted">{[t.phone, t.frequentRoute].filter(Boolean).join(' · ') || '—'}</span>
+                    <span className="block truncate text-[15px] font-bold text-ink">{tr.name}</span>
+                    <span className="block truncate text-[12px] text-muted">{[tr.phone, tr.frequentRoute].filter(Boolean).join(' · ') || '—'}</span>
                     <span className="mt-0.5 flex gap-3 text-[12px]">
                       <span className="text-muted">
-                        Carrying <span className="num font-semibold text-ink">{t.currentOrders}</span>
+                        {t('carrying')} <span className="num font-semibold text-ink">{tr.currentOrders}</span>
                       </span>
-                      <span className="num text-muted">{formatWeight(t.currentWeightMg)} g</span>
+                      <span className="num text-muted">{formatWeight(tr.currentWeightMg)} g</span>
                     </span>
                   </span>
                   <ChevronRight className="h-4 w-4 shrink-0 text-muted" />

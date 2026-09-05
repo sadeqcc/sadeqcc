@@ -33,7 +33,7 @@ interface Stats {
 
 export default function CustomerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { settings } = useApp();
+  const { settings, t } = useApp();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const [orders, setOrders] = useState<OrderView[]>([]);
@@ -62,7 +62,7 @@ export default function CustomerPage({ params }: { params: Promise<{ id: string 
   }, [load]);
 
   if (loading) return <Skeleton className="h-96" />;
-  if (error || !customer) return <ErrorState text="Could not load this customer." onRetry={() => void load()} />;
+  if (error || !customer) return <ErrorState text={t('could_not_load_customer')} onRetry={() => void load()} />;
 
   const phone = phoneDigits(customer.phone);
   const whatsapp = phoneDigits(customer.whatsapp ?? customer.phone);
@@ -95,43 +95,43 @@ export default function CustomerPage({ params }: { params: Promise<{ id: string 
       <div className="flex gap-2 no-print">
         {phone ? (
           <a href={`tel:${phone}`} className="btn-ghost btn-sm flex-1">
-            <Phone className="h-4 w-4" /> Call
+            <Phone className="h-4 w-4" /> {t('call')}
           </a>
         ) : null}
         {whatsapp ? (
           <a href={whatsappLink(whatsapp)} target="_blank" rel="noreferrer" className="btn-ghost btn-sm flex-1">
-            <MessageCircle className="h-4 w-4" /> WhatsApp
+            <MessageCircle className="h-4 w-4" /> {t('whatsapp')}
           </a>
         ) : null}
       </div>
 
       {stats ? (
         <div className="grid grid-cols-2 gap-2.5">
-          <StatCard label="Total Orders" value={String(stats.totalOrders)} />
-          <StatCard label="Active" value={String(stats.activeOrders)} tone="gold" />
-          <StatCard label="Delivered" value={String(stats.deliveredOrders)} tone="ok" />
+          <StatCard label={t('total_orders')} value={String(stats.totalOrders)} />
+          <StatCard label={t('active_orders')} value={String(stats.activeOrders)} tone="gold" />
+          <StatCard label={t('delivered_orders')} value={String(stats.deliveredOrders)} tone="ok" />
           <StatCard
-            label="Outstanding"
+            label={t('outstanding')}
             value={`${settings.currency} ${formatMoney(stats.outstandingFils)}`}
             tone={stats.outstandingFils > 0 ? 'bad' : 'ok'}
           />
           <div className="col-span-2">
-            <StatCard label="Total Purchases" value={`${settings.currency} ${formatMoney(stats.totalPurchasesFils)}`} tone="gold" />
+            <StatCard label={t('total_purchases')} value={`${settings.currency} ${formatMoney(stats.totalPurchasesFils)}`} tone="gold" />
           </div>
         </div>
       ) : null}
 
       {customer.notes ? (
         <Card>
-          <CardTitle title="Notes" />
+          <CardTitle title={t('notes')} />
           <p className="whitespace-pre-wrap text-[13px] text-ink">{customer.notes}</p>
         </Card>
       ) : null}
 
       <section>
-        <CardTitle title="Order history" subtitle={`${orders.length} ${orders.length === 1 ? 'order' : 'orders'}`} />
+        <CardTitle title={t('order_history')} subtitle={orders.length === 1 ? t('order_count_1') : t('orders_count', { n: orders.length })} />
         {orders.length === 0 ? (
-          <EmptyState title="No orders yet" text="This customer has no orders on record." icon="🥇" />
+          <EmptyState title={t('empty_orders_title')} text={t('no_orders_customer')} icon="🥇" />
         ) : (
           <div className="space-y-2.5">
             {orders.map((o) => (

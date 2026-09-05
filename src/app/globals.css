@@ -30,7 +30,7 @@
   --st-cancelled: 110 110 120;
   --st-overdue: 236 76 76;
 
-  --font-ui: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-ui: 'Cairo', 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-num: 'Inter', ui-monospace, 'SFMono-Regular', monospace;
   color-scheme: dark;
 }
@@ -72,9 +72,13 @@ html.light {
     font-family: var(--font-ui);
     overscroll-behavior-y: none;
   }
+  /* Figures stay Latin and tabular in both languages — a scale reading has to
+     line up in a column no matter which way the page runs. */
   .num,
   input[inputmode='decimal'],
   input[inputmode='numeric'] {
+    direction: ltr;
+    unicode-bidi: isolate;
     font-family: var(--font-num);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.01em;
