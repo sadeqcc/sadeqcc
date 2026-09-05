@@ -73,6 +73,9 @@ npm run dev                    # http://localhost:3000
 
 Open the app and create the owner account on first launch.
 
+To put it on a permanent URL you can use from a phone, follow **[DEPLOY.md](DEPLOY.md)** —
+Turso for the database, Vercel for the server, about ten minutes.
+
 ```bash
 npm run build && npm start     # production
 npm run typecheck              # strict TypeScript, no errors

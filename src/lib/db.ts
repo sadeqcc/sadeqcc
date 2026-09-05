@@ -19,8 +19,17 @@ export interface Driver {
 const url = process.env.DATABASE_URL || 'file:./data/gold-orders.db';
 
 function makeSqliteDriver(): Driver {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const Database = require('better-sqlite3');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let Database: any;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    Database = require('better-sqlite3');
+  } catch {
+    throw new Error(
+      'DATABASE_URL points at a local SQLite file but better-sqlite3 is not installed. ' +
+        'Install it, or set DATABASE_URL to a libsql:// URL for a hosted database.',
+    );
+  }
   const file = url.replace(/^file:/, '');
   const abs = path.isAbsolute(file) ? file : path.join(process.cwd(), file);
   fs.mkdirSync(path.dirname(abs), { recursive: true });
