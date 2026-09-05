@@ -1,8 +1,8 @@
 {
-  "name": "sadeq-drawer",
+  "name": "gold-orders",
   "version": "1.0.0",
   "private": true,
-  "description": "SADEQ DRAWER — Cash & Gold Reconciliation",
+  "description": "GOLD ORDERS — Gold Order Tracking & Delivery Management",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -11,7 +11,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:seed": "tsx scripts/seed.ts",
     "icons": "node scripts/gen-icons.mjs"
   },
   "dependencies": {

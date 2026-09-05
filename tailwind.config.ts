@@ -1,29 +1,39 @@
 import type { Config } from 'tailwindcss';
 
+const token = (name: string) => `rgb(var(--${name}) / <alpha-value>)`;
+
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   darkMode: 'class',
   theme: {
     extend: {
       colors: {
-        bg: 'rgb(var(--c-bg) / <alpha-value>)',
-        surface: 'rgb(var(--c-surface) / <alpha-value>)',
-        surface2: 'rgb(var(--c-surface-2) / <alpha-value>)',
-        line: 'rgb(var(--c-line) / <alpha-value>)',
-        gold: 'rgb(var(--c-gold) / <alpha-value>)',
-        goldsoft: 'rgb(var(--c-gold-soft) / <alpha-value>)',
-        ink: 'rgb(var(--c-ink) / <alpha-value>)',
-        muted: 'rgb(var(--c-muted) / <alpha-value>)',
-        ok: 'rgb(var(--c-ok) / <alpha-value>)',
-        bad: 'rgb(var(--c-bad) / <alpha-value>)',
-        info: 'rgb(var(--c-info) / <alpha-value>)',
-        warn: 'rgb(var(--c-warn) / <alpha-value>)',
-        lock: 'rgb(var(--c-lock) / <alpha-value>)',
+        bg: token('c-bg'),
+        surface: token('c-surface'),
+        surface2: token('c-surface-2'),
+        line: token('c-line'),
+        gold: token('c-gold'),
+        goldsoft: token('c-gold-soft'),
+        ink: token('c-ink'),
+        muted: token('c-muted'),
+        ok: token('c-ok'),
+        bad: token('c-bad'),
+        info: token('c-info'),
+        warn: token('c-warn'),
+        purple: token('c-purple'),
+        'st-ordered': token('st-ordered'),
+        'st-maker': token('st-maker'),
+        'st-ready': token('st-ready'),
+        'st-traveler': token('st-traveler'),
+        'st-arrived': token('st-arrived'),
+        'st-delivered': token('st-delivered'),
+        'st-cancelled': token('st-cancelled'),
+        'st-overdue': token('st-overdue'),
       },
-      borderRadius: { card: '16px', xl2: '18px' },
+      borderRadius: { card: '18px', xl2: '20px' },
       boxShadow: {
-        card: '0 1px 2px rgb(0 0 0 / 0.20), 0 8px 24px -12px rgb(0 0 0 / 0.35)',
-        pop: '0 12px 40px -8px rgb(0 0 0 / 0.55)',
+        card: '0 1px 2px rgb(0 0 0 / 0.18), 0 10px 30px -16px rgb(0 0 0 / 0.45)',
+        pop: '0 16px 48px -10px rgb(0 0 0 / 0.6)',
       },
       fontFamily: {
         sans: ['var(--font-ui)', 'system-ui', 'sans-serif'],
@@ -31,6 +41,9 @@ const config: Config = {
       },
     },
   },
+  safelist: [
+    { pattern: /(bg|text|border)-st-(ordered|maker|ready|traveler|arrived|delivered|cancelled|overdue)/ },
+  ],
   plugins: [],
 };
 export default config;

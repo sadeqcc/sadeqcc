@@ -4,11 +4,15 @@ export class ApiError extends Error {
   code: string;
   status: number;
   issues?: string[];
-  constructor(code: string, status: number, issues?: string[]) {
+  fields?: Record<string, string>;
+  extra?: Record<string, unknown>;
+  constructor(code: string, status: number, opts: { issues?: string[]; fields?: Record<string, string>; extra?: Record<string, unknown> } = {}) {
     super(code);
     this.code = code;
     this.status = status;
-    this.issues = issues;
+    this.issues = opts.issues;
+    this.fields = opts.fields;
+    this.extra = opts.extra;
   }
 }
 
@@ -17,11 +21,13 @@ export interface OutboxOp {
   path: string;
   method: string;
   body: unknown;
+  label: string;
   createdAt: string;
 }
 
-const OUTBOX_KEY = 'sadeq.outbox.v1';
-const CACHE_PREFIX = 'sadeq.cache.';
+const OUTBOX_KEY = 'go.outbox.v1';
+const CACHE_PREFIX = 'go.cache.';
+const DRAFT_PREFIX = 'go.draft.';
 
 export const uuid = (): string =>
   typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -37,13 +43,16 @@ function readLs<T>(key: string, fallback: T): T {
   }
 }
 
-function writeLs(key: string, value: unknown): void {
+function writeLs(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch {
-    /* storage full or blocked — the server stays the source of truth */
+    return false; // storage full or blocked — the server stays the source of truth
   }
 }
+
+/* ---------------------------------------------------------------- outbox */
 
 export const outbox = {
   all: (): OutboxOp[] => readLs<OutboxOp[]>(OUTBOX_KEY, []),
@@ -55,10 +64,7 @@ export const outbox = {
     notify();
   },
   remove(id: string) {
-    writeLs(
-      OUTBOX_KEY,
-      outbox.all().filter((o) => o.id !== id),
-    );
+    writeLs(OUTBOX_KEY, outbox.all().filter((o) => o.id !== id));
     notify();
   },
   size: () => outbox.all().length,
@@ -74,7 +80,9 @@ export function onOutboxChange(l: Listener): () => void {
   return () => listeners.delete(l);
 }
 
-/** Offline snapshot of a screen's payload, so a reopen shows the last known state. */
+/* ----------------------------------------------------------------- cache */
+
+/** Offline snapshot of a screen's payload, so reopening shows the last state. */
 export const cache = {
   get<T>(key: string): T | null {
     return readLs<T | null>(CACHE_PREFIX + key, null);
@@ -84,6 +92,32 @@ export const cache = {
   },
 };
 
+/* ---------------------------------------------------------------- drafts */
+
+export interface Draft<T> {
+  data: T;
+  savedAt: string;
+}
+
+/** Auto-saved form state, so closing the app mid-order loses nothing. */
+export const drafts = {
+  get<T>(key: string): Draft<T> | null {
+    return readLs<Draft<T> | null>(DRAFT_PREFIX + key, null);
+  },
+  set<T>(key: string, data: T): boolean {
+    return writeLs(DRAFT_PREFIX + key, { data, savedAt: new Date().toISOString() });
+  },
+  clear(key: string) {
+    try {
+      localStorage.removeItem(DRAFT_PREFIX + key);
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
+/* ------------------------------------------------------------------- api */
+
 async function raw<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
@@ -92,10 +126,15 @@ async function raw<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const json = (await res.json().catch(() => null)) as
     | { ok: true; data: T }
-    | { ok: false; error: string; issues?: string[] }
+    | ({ ok: false; error: string; issues?: string[]; fields?: Record<string, string> } & Record<string, unknown>)
     | null;
   if (!res.ok || !json || json.ok === false) {
-    throw new ApiError(json && 'error' in json ? json.error : 'http_error', res.status, json && 'issues' in json ? json.issues : undefined);
+    const err = json && json.ok === false ? json : null;
+    throw new ApiError(err?.error ?? 'http_error', res.status, {
+      issues: err?.issues,
+      fields: err?.fields,
+      extra: err ?? undefined,
+    });
   }
   return json.data;
 }
@@ -106,13 +145,13 @@ export function apiGet<T>(path: string): Promise<T> {
 
 /**
  * Writes go straight to the database. If the network is down the operation is
- * queued with its client-generated id, so replaying it can never duplicate a row.
+ * queued under its client-generated id, so a replay can never duplicate a row.
  */
 export async function apiWrite<T>(
   path: string,
   body: unknown,
-  method: 'POST' | 'PATCH' | 'DELETE' = 'POST',
-  opts: { queue?: boolean } = {},
+  method: 'POST' | 'PATCH' | 'PUT' | 'DELETE' = 'POST',
+  opts: { queue?: boolean; label?: string } = {},
 ): Promise<T | null> {
   const queue = opts.queue ?? true;
   try {
@@ -121,7 +160,7 @@ export async function apiWrite<T>(
     const offline = typeof navigator !== 'undefined' && !navigator.onLine;
     const networkish = e instanceof ApiError ? e.status >= 500 : true;
     if (queue && (offline || networkish)) {
-      outbox.push({ id: uuid(), path, method, body, createdAt: new Date().toISOString() });
+      outbox.push({ id: uuid(), path, method, body, label: opts.label ?? path, createdAt: new Date().toISOString() });
       return null;
     }
     throw e;
@@ -137,7 +176,7 @@ export async function flushOutbox(): Promise<{ sent: number; failed: number }> {
       outbox.remove(op.id);
       sent += 1;
     } catch (e) {
-      // A rejected payload (validation, locked day) must not block the queue forever.
+      // A rejected payload must not block the queue forever.
       if (e instanceof ApiError && e.status >= 400 && e.status < 500 && e.status !== 429) {
         outbox.remove(op.id);
         failed += 1;
@@ -149,8 +188,10 @@ export async function flushOutbox(): Promise<{ sent: number; failed: number }> {
   return { sent, failed };
 }
 
-export function download(filename: string, content: string, mime = 'application/json'): void {
-  const blob = new Blob([content], { type: `${mime};charset=utf-8;` });
+/* ----------------------------------------------------------------- files */
+
+export function download(filename: string, content: string | Blob, mime = 'application/json'): void {
+  const blob = content instanceof Blob ? content : new Blob([content], { type: `${mime};charset=utf-8;` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -166,6 +207,58 @@ export function toCsv(rows: (string | number)[][]): string {
     const s = String(v ?? '');
     return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
   };
-  // BOM keeps Arabic readable when the file is opened in Excel.
   return '﻿' + rows.map((r) => r.map(esc).join(',')).join('\n');
+}
+
+/**
+ * Shrinks a photo before it is stored, so a thousand orders with pictures stay
+ * usable. Videos and other files pass through untouched.
+ */
+export async function compressImage(
+  file: File,
+  opts: { maxEdge?: number; quality?: number } = {},
+): Promise<{ data: string; thumb: string | null; mime: string; size: number }> {
+  const maxEdge = opts.maxEdge ?? 1600;
+  const quality = opts.quality ?? 0.82;
+  if (!file.type.startsWith('image/')) {
+    const data = await fileToDataUrl(file);
+    return { data, thumb: null, mime: file.type, size: file.size };
+  }
+  const bitmap = await createImageBitmap(file).catch(() => null);
+  if (!bitmap) {
+    const data = await fileToDataUrl(file);
+    return { data, thumb: null, mime: file.type, size: file.size };
+  }
+  const draw = (edge: number, q: number): string => {
+    const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    return canvas.toDataURL('image/jpeg', q);
+  };
+  const data = draw(maxEdge, quality) || (await fileToDataUrl(file));
+  const thumb = draw(280, 0.7) || null;
+  bitmap.close?.();
+  return { data, thumb, mime: 'image/jpeg', size: Math.round((data.length * 3) / 4) };
+}
+
+export function fileToDataUrl(file: File | Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error('read_failed'));
+    r.readAsDataURL(file);
+  });
+}
+
+/** wa.me link — the message is prefilled, never sent automatically. */
+export function whatsappLink(phone: string, message?: string): string {
+  const digits = (phone ?? '').replace(/\D/g, '');
+  const text = message ? `?text=${encodeURIComponent(message)}` : '';
+  return `https://wa.me/${digits}${text}`;
 }

@@ -3,29 +3,32 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Banknote, BarChart3, ChevronLeft, ChevronRight, CloudOff, Coins, Home, Settings, Wifi } from 'lucide-react';
+import { ChevronLeft, CloudOff, Home, MoreHorizontal, Package, Plus, RefreshCw, Users } from 'lucide-react';
 import { useApp } from './providers';
-import { dubaiDate, dubaiTime } from '@/lib/date';
+import { dubaiClock, dubaiDate } from '@/lib/date';
 import { useMounted } from './ui';
 
 const NAV = [
-  { href: '/', key: 'nav_home', icon: Home, emoji: '🏠' },
-  { href: '/cash', key: 'nav_cash', icon: Banknote, emoji: '💵' },
-  { href: '/gold', key: 'nav_gold', icon: Coins, emoji: '🥇' },
-  { href: '/reports', key: 'nav_reports', icon: BarChart3, emoji: '📊' },
+  { href: '/', label: 'Home', icon: Home },
+  { href: '/orders', label: 'Orders', icon: Package },
+  { href: '/customers', label: 'Customers', icon: Users },
+  { href: '/more', label: 'More', icon: MoreHorizontal },
 ] as const;
 
+/** Screens that own their whole viewport — no chrome, no bottom bar. */
+const BARE = ['/login'];
+
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { t, settings, online, pending, dir, user } = useApp();
+  const { settings, online, pending, user, authReady, syncNow } = useApp();
   const pathname = usePathname();
   const router = useRouter();
   const mounted = useMounted();
   const [clock, setClock] = useState('');
 
   useEffect(() => {
-    const tick = () => setClock(dubaiTime());
+    const tick = () => setClock(dubaiClock());
     tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(tick, 30_000);
     return () => clearInterval(id);
   }, []);
 
@@ -35,73 +38,103 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const isAuthScreen = pathname === '/login';
-  const Back = dir === 'rtl' ? ChevronRight : ChevronLeft;
+  // Anything that is not the login screen requires a session.
+  useEffect(() => {
+    if (!authReady) return;
+    if (!user && !BARE.includes(pathname)) router.replace('/login');
+  }, [authReady, user, pathname, router]);
 
-  if (isAuthScreen) return <main className="mx-auto min-h-dvh w-full max-w-md px-4 py-8">{children}</main>;
+  const isPrint = pathname.startsWith('/print');
+  if (BARE.includes(pathname)) return <main className="mx-auto min-h-dvh w-full max-w-md px-4 py-8">{children}</main>;
+  if (isPrint) return <main className="mx-auto w-full max-w-3xl px-4 py-6">{children}</main>;
 
   return (
     <div className="mx-auto flex min-h-dvh w-full max-w-2xl flex-col">
       <header className="safe-top sticky top-0 z-40 border-b border-line/70 bg-bg/90 backdrop-blur no-print">
         <div className="flex items-center gap-2 px-4 py-3">
           {pathname !== '/' ? (
-            <button className="rounded-lg p-2 text-muted hover:text-ink" onClick={() => router.back()} aria-label={t('back')}>
-              <Back className="h-5 w-5" />
+            <button type="button" className="rounded-lg p-2 text-muted hover:text-ink" onClick={() => router.back()} aria-label="Back">
+              <ChevronLeft className="h-5 w-5" />
             </button>
           ) : (
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold/15 text-[15px]">🥇</span>
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-gold/15 text-[15px]" aria-hidden>
+              🥇
+            </span>
           )}
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-[15px] font-extrabold tracking-wide text-gold">
-              {settings.shopName ? `${settings.shopName} · ` : ''}SADEQ DRAWER
-            </h1>
+            <h1 className="truncate text-[15px] font-extrabold tracking-[0.14em] text-gold">GOLD ORDERS</h1>
             <p className="truncate text-[11px] text-muted">
-              {mounted ? `${dubaiDate()} · ` : ''}
-              <span className="num">{clock}</span>
-              {user?.displayName ? ` · ${user.displayName}` : ''}
+              {settings.shopName ? `${settings.shopName} · ` : ''}
+              {mounted ? (
+                <>
+                  <span className="num">{dubaiDate()}</span> · <span className="num">{clock}</span> · Dubai
+                </>
+              ) : null}
             </p>
           </div>
           {mounted && !online ? (
-            <span className="chip bg-warn/15 text-warn" title={t('offline')}>
+            <span className="chip bg-warn/15 text-warn" title="Offline — changes are queued">
               <CloudOff className="h-3.5 w-3.5" />
-              {pending > 0 ? pending : ''}
+              {pending > 0 ? pending : 'Offline'}
             </span>
           ) : mounted && pending > 0 ? (
-            <span className="chip bg-info/15 text-info">
-              <Wifi className="h-3.5 w-3.5" />
+            <button type="button" className="chip bg-info/15 text-info" onClick={() => void syncNow()} title="Sync queued changes">
+              <RefreshCw className="h-3.5 w-3.5" />
               {pending}
-            </span>
+            </button>
           ) : null}
-          <Link href="/settings" aria-label={t('nav_settings')} className="rounded-lg p-2 text-muted hover:text-gold">
-            <Settings className="h-5 w-5" />
-          </Link>
         </div>
       </header>
 
       <main className="flex-1 px-4 pb-28 pt-4">{children}</main>
 
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 mx-auto max-w-2xl border-t border-line bg-surface/95 backdrop-blur no-print">
-        <ul className="grid grid-cols-4">
-          {NAV.map((item) => {
-            const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
-            const Icon = item.icon;
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={`flex min-h-[58px] flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition ${
-                    active ? 'text-gold' : 'text-muted'
-                  }`}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <Icon className="h-5 w-5" />
-                  {t(item.key)}
-                </Link>
-              </li>
-            );
-          })}
+        <ul className="grid grid-cols-5 items-center">
+          {NAV.slice(0, 2).map((item) => (
+            <NavItem key={item.href} {...item} pathname={pathname} />
+          ))}
+          <li className="flex justify-center">
+            <Link
+              href="/orders/new"
+              aria-label="New order"
+              className="-mt-6 grid h-14 w-14 place-items-center rounded-full bg-gold text-black shadow-pop transition active:scale-95"
+            >
+              <Plus className="h-7 w-7" strokeWidth={2.5} />
+            </Link>
+          </li>
+          {NAV.slice(2).map((item) => (
+            <NavItem key={item.href} {...item} pathname={pathname} />
+          ))}
         </ul>
       </nav>
     </div>
+  );
+}
+
+function NavItem({
+  href,
+  label,
+  icon: Icon,
+  pathname,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  pathname: string;
+}) {
+  const active = href === '/' ? pathname === '/' : pathname.startsWith(href);
+  return (
+    <li>
+      <Link
+        href={href}
+        className={`flex min-h-[58px] flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition ${
+          active ? 'text-gold' : 'text-muted'
+        }`}
+        aria-current={active ? 'page' : undefined}
+      >
+        <Icon className="h-5 w-5" />
+        {label}
+      </Link>
+    </li>
   );
 }

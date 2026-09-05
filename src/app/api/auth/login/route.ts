@@ -1,22 +1,20 @@
-import { NextResponse } from 'next/server';
-import { findUser, setSession, verifyPassword } from '@/lib/auth';
 import { fail, guard, ok, readJson } from '@/lib/api';
-import { loginSchema } from '@/lib/schemas';
+import { findUser, setSession, verifyPassword } from '@/lib/auth';
+import { credentialsSchema } from '@/lib/schemas';
+import type { Role } from '@/lib/types';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-export async function POST(req: Request): Promise<NextResponse> {
-  const limited = guard(req, 'login', 10, 60_000);
+export async function POST(req: Request) {
+  const limited = guard(req, 'login', 20, 60_000);
   if (limited) return limited;
 
-  const parsed = loginSchema.safeParse(await readJson(req));
-  if (!parsed.success) return fail('invalid_input', 400);
+  const parsed = credentialsSchema.safeParse(await readJson(req));
+  if (!parsed.success) return fail('invalid_credentials', 401);
 
   const user = await findUser(parsed.data.username);
-  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
-    return fail('bad_credentials', 401);
+  // Same response either way, so a wrong username cannot be told from a wrong password.
+  if (!user || user.status !== 'active' || !verifyPassword(parsed.data.password, user.passwordHash)) {
+    return fail('invalid_credentials', 401);
   }
-  await setSession({ uid: user.id, ownerId: user.ownerId, username: user.username });
-  return ok({ id: user.id, username: user.username, displayName: user.displayName });
+  await setSession({ uid: user.id, ownerId: user.ownerId, username: user.username, role: user.role as Role });
+  return ok({ user: { id: user.id, username: user.username, displayName: user.displayName, role: user.role } });
 }

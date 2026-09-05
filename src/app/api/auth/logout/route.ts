@@ -1,11 +1,7 @@
-import { NextResponse } from 'next/server';
-import { clearSession } from '@/lib/auth';
 import { ok } from '@/lib/api';
+import { clearSession } from '@/lib/auth';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-export async function POST(): Promise<NextResponse> {
+export async function POST() {
   await clearSession();
   return ok({ loggedOut: true });
 }

@@ -1,23 +1,19 @@
-import { NextResponse } from 'next/server';
-import { fail, guard, ok, readJson, requireCtx } from '@/lib/api';
+import { fail, isDenied, ok, readJson, requireCtx } from '@/lib/api';
 import { getSettings, saveSettings } from '@/lib/repo';
 import { settingsSchema } from '@/lib/schemas';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-export async function GET(): Promise<NextResponse> {
+export async function GET() {
   const g = await requireCtx();
-  if ('response' in g) return g.response;
+  if (isDenied(g)) return g.response;
   return ok({ settings: await getSettings(g.ctx.ownerId) });
 }
 
-export async function POST(req: Request): Promise<NextResponse> {
-  const limited = guard(req, 'settings', 120, 60_000);
-  if (limited) return limited;
-  const g = await requireCtx();
-  if ('response' in g) return g.response;
+export async function PATCH(req: Request) {
+  const g = await requireCtx('settings.manage');
+  if (isDenied(g)) return g.response;
   const parsed = settingsSchema.safeParse(await readJson(req));
-  if (!parsed.success) return fail('invalid_input', 400, { issues: parsed.error.issues.map((i) => i.message) });
+  if (!parsed.success) return fail('validation_failed', 422, { issues: parsed.error.issues.map((i) => i.message) });
   return ok({ settings: await saveSettings(g.ctx, parsed.data) });
 }
+
+export const POST = PATCH;

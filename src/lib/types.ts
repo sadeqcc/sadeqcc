@@ -1,269 +1,507 @@
-export type ReconciliationStatus =
-  | 'not_started'
-  | 'draft'
-  | 'matched'
-  | 'has_differences'
-  | 'needs_review'
-  | 'finalized'
-  | 'locked';
+/**
+ * GOLD ORDERS — domain model.
+ *
+ * Money is stored as an integer number of fils (1 AED = 100 fils).
+ * Gold weight is stored as an integer number of milligrams (1 g = 1000 mg).
+ * Rates are stored as fils per gram. Nothing monetary is ever a float.
+ */
 
-export type CashEntryKind =
-  | 'principal'
-  | 'debt'
-  | 'commission'
-  | 'amanat'
-  | 'unregistered_sale'
-  | 'duplicate_sale'
-  | 'system_error';
+/* ------------------------------------------------------------------ status */
 
-export const CASH_ENTRY_KINDS: CashEntryKind[] = [
-  'principal',
-  'debt',
-  'commission',
-  'amanat',
-  'unregistered_sale',
-  'duplicate_sale',
-  'system_error',
-];
+export const ORDER_STATUSES = [
+  'ordered',
+  'maker',
+  'ready',
+  'traveler',
+  'arrived',
+  'delivered',
+  'cancelled',
+] as const;
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
-/** Which side of the equation a kind belongs to, and its sign. */
-export const CASH_KIND_EFFECT: Record<CashEntryKind, { side: 'physical' | 'system'; sign: 1 | -1 }> = {
-  principal: { side: 'physical', sign: 1 },
-  debt: { side: 'physical', sign: 1 },
-  commission: { side: 'physical', sign: 1 },
-  amanat: { side: 'physical', sign: -1 },
-  unregistered_sale: { side: 'physical', sign: -1 },
-  duplicate_sale: { side: 'system', sign: -1 },
-  system_error: { side: 'system', sign: -1 },
+/** The normal happy path, in order. `cancelled` is deliberately not part of it. */
+export const STATUS_FLOW: OrderStatus[] = ['ordered', 'maker', 'ready', 'traveler', 'arrived', 'delivered'];
+
+export const STATUS_LABEL: Record<OrderStatus, string> = {
+  ordered: 'Ordered',
+  maker: 'Maker',
+  ready: 'Ready',
+  traveler: 'Traveler',
+  arrived: 'Arrived',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
 };
 
-export type AdjustmentDirection = 'add_physical' | 'sub_physical' | 'add_system' | 'sub_system';
-
-export const ADJUSTMENT_EFFECT: Record<AdjustmentDirection, { side: 'physical' | 'system'; sign: 1 | -1 }> = {
-  add_physical: { side: 'physical', sign: 1 },
-  sub_physical: { side: 'physical', sign: -1 },
-  add_system: { side: 'system', sign: 1 },
-  sub_system: { side: 'system', sign: -1 },
+export const STATUS_ICON: Record<OrderStatus, string> = {
+  ordered: '📝',
+  maker: '🔨',
+  ready: '✅',
+  traveler: '✈️',
+  arrived: '📍',
+  delivered: '🎁',
+  cancelled: '⛔',
 };
 
-export type HolderType = 'ashraf' | 'person' | 'office' | 'factory' | 'goldsmith' | 'other';
-export const HOLDER_TYPES: HolderType[] = ['ashraf', 'person', 'office', 'factory', 'goldsmith', 'other'];
+/** Tailwind token names (see globals.css) — never colour alone, always paired with text. */
+export const STATUS_TONE: Record<OrderStatus, string> = {
+  ordered: 'st-ordered',
+  maker: 'st-maker',
+  ready: 'st-ready',
+  traveler: 'st-traveler',
+  arrived: 'st-arrived',
+  delivered: 'st-delivered',
+  cancelled: 'st-cancelled',
+};
 
-/** 'out' = our gold held outside the drawer. 'in' = someone else's gold sitting with us. */
-export type MovementDirection = 'out' | 'in';
-export type MovementStatus = 'outstanding' | 'partially_returned' | 'returned' | 'overdue';
+export const CLOSED_STATUSES: OrderStatus[] = ['delivered', 'cancelled'];
+export const isClosed = (s: OrderStatus): boolean => CLOSED_STATUSES.includes(s);
 
-export type DifferenceReason =
-  | 'unregistered_sale'
-  | 'duplicate_entry'
-  | 'counting_mistake'
-  | 'customer_deposit'
-  | 'debt'
-  | 'commission'
-  | 'gold_with_person'
-  | 'borrowed_gold'
-  | 'system_mistake'
-  | 'other';
+/* ---------------------------------------------------------------- urgency */
 
-export const DIFFERENCE_REASONS: DifferenceReason[] = [
-  'unregistered_sale',
-  'duplicate_entry',
-  'counting_mistake',
-  'customer_deposit',
-  'debt',
-  'commission',
-  'gold_with_person',
-  'borrowed_gold',
-  'system_mistake',
-  'other',
+export const URGENCY_LEVELS = [
+  'critical',
+  'high',
+  'late',
+  'due_today',
+  'due_tomorrow',
+  'upcoming',
+  'no_date',
+  'delivered',
+  'cancelled',
+] as const;
+export type Urgency = (typeof URGENCY_LEVELS)[number];
+
+export const URGENCY_LABEL: Record<Urgency, string> = {
+  critical: 'Critical',
+  high: 'High Priority',
+  late: 'Late',
+  due_today: 'Due Today',
+  due_tomorrow: 'Due Tomorrow',
+  upcoming: 'On Schedule',
+  no_date: 'No Delivery Date',
+  delivered: 'Delivered',
+  cancelled: 'Cancelled',
+};
+
+export const URGENCY_ICON: Record<Urgency, string> = {
+  critical: '🚨',
+  high: '🔴',
+  late: '🔴',
+  due_today: '🟡',
+  due_tomorrow: '🟠',
+  upcoming: '🟢',
+  no_date: '⚪',
+  delivered: '✅',
+  cancelled: '⛔',
+};
+
+/* ------------------------------------------------------------- catalogues */
+
+export const CATEGORIES = [
+  'Necklace',
+  'Bracelet',
+  'Ring',
+  'Earrings',
+  'Pendant',
+  'Chain',
+  'Bangle',
+  'Set',
+  'Anklet',
+  'Custom',
+  'Other',
+] as const;
+
+export const STYLES = ['Dubai', 'Indian', 'Italian', 'Turkish', 'Custom', 'Other'] as const;
+
+export const KARATS = ['24K', '22K', '21K', '18K', '16K', '14K'] as const;
+
+export const CUSTOMER_TYPES = ['Regular', 'VIP', 'Wholesale', 'Retail', 'New Customer'] as const;
+
+export const PAYMENT_METHODS = ['Cash', 'Bank Transfer', 'Card', 'PayPal', 'Exchange Gold', 'Other'] as const;
+
+export const DELIVERY_METHODS = ['Shop Pickup', 'Representative', 'Traveler', 'Courier', 'Other'] as const;
+
+export const MEDIA_CATEGORIES = [
+  'Reference Photo',
+  'Customer Photo',
+  'Maker Progress',
+  'Ready Product',
+  'Traveler Proof',
+  'Arrival Proof',
+  'Delivery Proof',
+  'Other',
+] as const;
+
+export const CANCEL_REASONS = [
+  'Customer Cancelled',
+  'Maker Unable',
+  'Payment Issue',
+  'Unavailable',
+  'Duplicate Order',
+  'Other',
+] as const;
+
+export const QUALITY_CHECKS = ['Passed', 'Needs Adjustment', 'Rejected'] as const;
+
+export const DEFAULT_TAGS = [
+  'VIP',
+  'Wedding',
+  'Urgent',
+  'Special Order',
+  'Paid',
+  'Balance',
+  'Replacement',
+  'Repair',
+  'Exchange',
+] as const;
+
+export const COMMON_ROUTES = ['Dubai → Mali', 'Dubai → Paris', 'Dubai → USA', 'Dubai → Other'] as const;
+
+export const MAKER_SPECIALTIES = ['Dubai Style', 'Indian Style', 'Italian Style', 'Repair', 'Custom Work'] as const;
+
+/* ------------------------------------------------------------------ roles */
+
+export const ROLES = ['owner', 'manager', 'employee'] as const;
+export type Role = (typeof ROLES)[number];
+
+export const PERMISSIONS = [
+  'order.create',
+  'order.edit',
+  'order.status',
+  'order.cancel',
+  'order.delete',
+  'customer.manage',
+  'payment.create',
+  'payment.edit',
+  'payment.delete',
+  'directory.manage',
+  'reports.view',
+  'finance.view',
+  'settings.manage',
+  'backup.manage',
+  'audit.view',
+  'user.manage',
+] as const;
+export type Permission = (typeof PERMISSIONS)[number];
+
+const MANAGER: Permission[] = [
+  'order.create',
+  'order.edit',
+  'order.status',
+  'order.cancel',
+  'customer.manage',
+  'payment.create',
+  'payment.edit',
+  'payment.delete',
+  'directory.manage',
+  'reports.view',
+  'finance.view',
+  'audit.view',
 ];
 
-export type MatchState = 'matched' | 'over' | 'short';
+const EMPLOYEE: Permission[] = [
+  'order.create',
+  'order.edit',
+  'order.status',
+  'customer.manage',
+  'payment.create',
+  'directory.manage',
+];
 
-export interface CashEntry {
-  id: string;
-  ownerId: string;
-  dayId: string;
-  kind: CashEntryKind;
-  amountFils: number;
-  personName: string | null;
-  description: string | null;
-  refNo: string | null;
-  entryDate: string;
-  dueDate: string | null;
-  note: string | null;
-  attachmentId: string | null;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  deletedAt: string | null;
+export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
+  owner: PERMISSIONS,
+  manager: MANAGER,
+  employee: EMPLOYEE,
+};
+
+export function can(role: string | null | undefined, p: Permission): boolean {
+  const r = (role ?? 'employee') as Role;
+  const list = ROLE_PERMISSIONS[r] ?? EMPLOYEE;
+  return list.includes(p);
 }
 
-export interface CashAdjustment {
-  id: string;
-  ownerId: string;
-  dayId: string;
-  name: string;
-  amountFils: number;
-  direction: AdjustmentDirection;
-  note: string | null;
-  entryDate: string;
-  attachmentId: string | null;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  deletedAt: string | null;
-}
-
-export interface GoldRow {
-  id: string;
-  ownerId: string;
-  dayId: string;
-  karat: string;
-  systemMg: number;
-  drawerMg: number;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  deletedAt: string | null;
-}
-
-export interface GoldMovement {
-  id: string;
-  ownerId: string;
-  karat: string;
-  direction: MovementDirection;
-  holderType: HolderType;
-  holderName: string;
-  weightMg: number;
-  returnedMg: number;
-  deliveryDate: string;
-  expectedReturnDate: string | null;
-  returnedAt: string | null;
-  reason: string | null;
-  refNo: string | null;
-  note: string | null;
-  attachmentId: string | null;
-  status: MovementStatus;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  deletedAt: string | null;
-}
-
-export interface Denominations {
-  [face: string]: number; // face value in fils -> quantity
-}
-
-export const AED_DENOMS = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 100]; // fils
-export const AED_COINS = [100, 50, 25]; // 1 AED, 50 fils, 25 fils
-
-export interface DayRecord {
-  id: string;
-  ownerId: string;
-  date: string; // YYYY-MM-DD (Asia/Dubai business date)
-  shift: string;
-  status: ReconciliationStatus;
-  employeeName: string | null;
-  systemCashFils: number | null;
-  physicalMode: 'total' | 'count';
-  physicalCashFils: number;
-  denominations: Denominations;
-  notes: string | null;
-  differenceReasons: DifferenceReason[];
-  reasonText: string | null;
-  snapshot: unknown | null;
-  engineVersion: string | null;
-  startedAt: string | null;
-  finalizedAt: string | null;
-  finalizedBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  deletedAt: string | null;
-}
-
-export interface Person {
-  id: string;
-  ownerId: string;
-  name: string;
-  type: HolderType;
-  phone: string | null;
-  note: string | null;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  deletedAt: string | null;
-}
-
-export interface LocationRow {
-  id: string;
-  ownerId: string;
-  name: string;
-  kind: string;
-  note: string | null;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-  createdBy: string;
-  deletedAt: string | null;
-}
-
-export interface AuditLog {
-  id: string;
-  ownerId: string;
-  entity: string;
-  entityId: string;
-  action: string;
-  oldValue: string | null;
-  newValue: string | null;
-  actor: string;
-  reason: string | null;
-  createdAt: string;
-}
+/* --------------------------------------------------------------- settings */
 
 export interface AppSettings {
-  language: 'ar' | 'en';
-  theme: 'dark' | 'light';
-  palette: 'black_gold' | 'navy_gold' | 'white_gold' | 'emerald' | 'burgundy' | 'high_contrast';
-  employeeName: string;
   shopName: string;
+  shopLogo: string | null;
+  shopPhone: string;
+  shopAddress: string;
+  employeeName: string;
   currency: string;
   timezone: string;
-  cashDecimals: number;
-  goldDecimals: number;
-  goldPrecision: 1 | 10 | 100; // milligram step
+  theme: 'dark' | 'light' | 'system';
   karats: string[];
-  tolerances: Record<string, number>; // karat -> mg
-  cashTolerance: number; // fils
-  pinEnabled: boolean;
-  tipsEnabled: boolean;
-  alertsEnabled: boolean;
-  multiShift: boolean;
-  autoBackup: boolean;
+  styles: string[];
+  categories: string[];
+  paymentMethods: string[];
+  destinations: string[];
+  weightPrecision: 1 | 2 | 3;
+  defaultToleranceMg: number;
+  defaultGoldRateFilsPerGram: Record<string, number>;
+  defaultMakingChargeFilsPerGram: number;
+  vatPercent: number;
+  orderNumberPrefix: string;
+  orderNumberPadding: number;
+  notifications: {
+    overdue: boolean;
+    dueToday: boolean;
+    dueTomorrow: boolean;
+    makerDeadline: boolean;
+    travelerDeparture: boolean;
+    travelerArrival: boolean;
+    balance: boolean;
+    ready: boolean;
+    arrived: boolean;
+  };
 }
 
+/** What a settings update may carry: any field, and any subset of the toggles. */
+export type SettingsPatch = Partial<Omit<AppSettings, 'notifications'>> & {
+  notifications?: Partial<AppSettings['notifications']>;
+};
+
 export const DEFAULT_SETTINGS: AppSettings = {
-  language: 'ar',
-  theme: 'dark',
-  palette: 'black_gold',
+  shopName: 'Gold Orders',
+  shopLogo: null,
+  shopPhone: '',
+  shopAddress: '',
   employeeName: '',
-  shopName: '',
   currency: 'AED',
   timezone: 'Asia/Dubai',
-  cashDecimals: 2,
-  goldDecimals: 3,
-  goldPrecision: 1,
-  karats: ['995', '22K', '21K', '18K', '16K', '14K'],
-  tolerances: {},
-  cashTolerance: 0,
-  pinEnabled: false,
-  tipsEnabled: true,
-  alertsEnabled: true,
-  multiShift: false,
-  autoBackup: true,
+  theme: 'dark',
+  karats: [...KARATS],
+  styles: [...STYLES],
+  categories: [...CATEGORIES],
+  paymentMethods: [...PAYMENT_METHODS],
+  destinations: ['Dubai', 'Bamako, Mali', 'Paris, France', 'USA'],
+  weightPrecision: 3,
+  defaultToleranceMg: 2000,
+  defaultGoldRateFilsPerGram: {},
+  defaultMakingChargeFilsPerGram: 0,
+  vatPercent: 0,
+  orderNumberPrefix: 'GO',
+  orderNumberPadding: 4,
+  notifications: {
+    overdue: true,
+    dueToday: true,
+    dueTomorrow: true,
+    makerDeadline: true,
+    travelerDeparture: true,
+    travelerArrival: true,
+    balance: true,
+    ready: true,
+    arrived: true,
+  },
 };
+
+/* ------------------------------------------------------------------ rows */
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string | null;
+  whatsapp: string | null;
+  country: string | null;
+  city: string | null;
+  customerType: string | null;
+  customerRef: string | null;
+  instagram: string | null;
+  email: string | null;
+  tags: string[];
+  notes: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Maker {
+  id: string;
+  name: string;
+  company: string | null;
+  phone: string | null;
+  whatsapp: string | null;
+  location: string | null;
+  specialty: string | null;
+  notes: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Traveler {
+  id: string;
+  name: string;
+  phone: string | null;
+  whatsapp: string | null;
+  frequentRoute: string | null;
+  idReference: string | null;
+  notes: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  amountFils: number;
+  paidOn: string;
+  paidAt: string | null;
+  method: string;
+  reference: string | null;
+  note: string | null;
+  mediaId: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  createdByName: string | null;
+}
+
+export interface GoldExchange {
+  id: string;
+  orderId: string;
+  karat: string;
+  weightMg: number;
+  rateFilsPerGram: number;
+  valueFils: number;
+  mediaId: string | null;
+  notes: string | null;
+  receivedOn: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderNote {
+  id: string;
+  orderId: string;
+  text: string;
+  pinned: number;
+  createdByName: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderMedia {
+  id: string;
+  orderId: string | null;
+  name: string;
+  mime: string;
+  size: number;
+  kind: 'photo' | 'video' | 'file';
+  category: string;
+  thumb: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StatusEvent {
+  id: string;
+  orderId: string;
+  fromStatus: string | null;
+  toStatus: string;
+  note: string | null;
+  mediaId: string | null;
+  detail: Record<string, unknown> | null;
+  actor: string;
+  occurredAt: string;
+  createdAt: string;
+}
+
+export interface Order {
+  id: string;
+  orderNumber: string;
+  referenceNo: string | null;
+  customerId: string;
+  category: string;
+  productName: string;
+  style: string | null;
+  karat: string;
+
+  expectedWeightMg: number;
+  minimumWeightMg: number | null;
+  maximumWeightMg: number | null;
+  actualWeightMg: number | null;
+
+  goldRateFilsPerGram: number;
+  goldRateMode: 'per_gram' | 'per_ounce' | 'manual';
+  goldValueOverrideFils: number | null;
+  makingChargeMode: 'per_gram' | 'fixed';
+  makingChargeFils: number;
+  otherChargesFils: number;
+  discountFils: number;
+  vatBp: number;
+  totalAmountFils: number;
+  totalPaidFils: number;
+  remainingBalanceFils: number;
+
+  makerId: string | null;
+  makerReference: string | null;
+  makerCostFils: number;
+  makerNotes: string | null;
+  sentToMakerDate: string | null;
+
+  travelerId: string | null;
+  travelerShipmentId: string | null;
+  destination: string | null;
+
+  orderDate: string;
+  expectedReadyDate: string | null;
+  readyDate: string | null;
+  expectedDeliveryDate: string | null;
+  arrivalDate: string | null;
+  deliveredDate: string | null;
+
+  qualityCheck: string | null;
+  receivedBy: string | null;
+  deliveryMethod: string | null;
+  cancelReason: string | null;
+  cancelNote: string | null;
+
+  status: OrderStatus;
+  coverMediaId: string | null;
+  notes: string | null;
+  tags: string[];
+
+  createdAt: string;
+  updatedAt: string;
+  createdByName: string | null;
+  deletedAt: string | null;
+}
+
+/** An order plus everything the list and card views need, computed server-side. */
+export interface OrderView extends Order {
+  customerName: string;
+  customerPhone: string | null;
+  customerWhatsapp: string | null;
+  makerName: string | null;
+  travelerName: string | null;
+  urgency: Urgency;
+  daysLate: number;
+  daysRemaining: number | null;
+  priority: number;
+  isOverdue: boolean;
+  progressPercent: number;
+  balanceStatus: 'paid' | 'partial' | 'unpaid' | 'credit';
+  weightDifferenceMg: number | null;
+  weightVerdict: 'within' | 'slight' | 'outside' | null;
+}
+
+export interface Shipment {
+  id: string;
+  travelerId: string;
+  destination: string;
+  departureDate: string | null;
+  expectedArrival: string | null;
+  arrivedAt: string | null;
+  flightNumber: string | null;
+  airline: string | null;
+  packageRef: string | null;
+  notes: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}

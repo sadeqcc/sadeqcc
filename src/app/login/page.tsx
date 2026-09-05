@@ -2,90 +2,97 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LogIn, ShieldCheck } from 'lucide-react';
-import { Card, Field, TextInput } from '@/components/ui';
 import { useApp } from '@/components/providers';
-import { apiGet, apiWrite } from '@/lib/client';
+import { Card, Field, Spinner, TextInput } from '@/components/ui';
+import { ApiError, apiWrite } from '@/lib/client';
 
 export default function LoginPage() {
-  const { t, refreshAuth } = useApp();
+  const { user, needsSetup, authReady, refreshAuth, toast } = useApp();
   const router = useRouter();
-  const [needsSetup, setNeedsSetup] = useState<boolean | null>(null);
+  const [mode, setMode] = useState<'login' | 'setup'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiGet<{ user: unknown; needsSetup: boolean }>('/api/auth/me')
-      .then((m) => {
-        if (m.user) router.replace('/');
-        else setNeedsSetup(m.needsSetup);
-      })
-      .catch(() => setNeedsSetup(false));
-  }, [router]);
+    if (needsSetup) setMode('setup');
+  }, [needsSetup]);
 
-  const submit = async () => {
-    setError(null);
-    if (username.trim().length < 3 || password.length < 6) {
-      setError(t('required'));
-      return;
-    }
+  useEffect(() => {
+    if (authReady && user) router.replace('/');
+  }, [authReady, user, router]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setBusy(true);
+    setError(null);
     try {
-      await apiWrite(
-        needsSetup ? '/api/auth/register' : '/api/auth/login',
-        { username: username.trim(), password, displayName: displayName || undefined },
-        'POST',
-        { queue: false },
-      );
+      const path = mode === 'setup' ? '/api/auth/register' : '/api/auth/login';
+      await apiWrite(path, { username, password, displayName: displayName || username }, 'POST', { queue: false });
       await refreshAuth();
+      toast(mode === 'setup' ? 'Shop created' : 'Welcome back');
       router.replace('/');
-    } catch (e) {
-      const code = (e as Error).message;
-      setError(code === 'bad_credentials' ? t('bad_credentials') : code === 'rate_limited' ? t('error_generic') : t('error_generic'));
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : 'network_error';
+      setError(
+        code === 'invalid_credentials'
+          ? 'That username and password do not match.'
+          : code === 'username_taken'
+            ? 'That username is already in use.'
+            : code === 'registration_closed'
+              ? 'This shop already has an owner. Sign in instead.'
+              : code === 'validation_failed'
+                ? 'Username needs 3+ characters and the password 6+.'
+                : 'Could not reach the server. Check your connection.',
+      );
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="flex min-h-[70dvh] flex-col justify-center">
+    <div className="flex min-h-[80dvh] flex-col justify-center">
       <div className="mb-6 text-center">
-        <p className="text-[34px]">🥇</p>
-        <h1 className="text-[24px] font-extrabold tracking-wide text-gold">SADEQ DRAWER</h1>
-        <p className="text-[13px] text-muted">Cash &amp; Gold Reconciliation</p>
+        <span className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gold/15 text-2xl" aria-hidden>
+          🥇
+        </span>
+        <h1 className="text-[22px] font-extrabold tracking-[0.16em] text-gold">GOLD ORDERS</h1>
+        <p className="mt-1 text-[13px] text-muted">Gold Order Tracking &amp; Delivery Management</p>
       </div>
 
       <Card>
-        <h2 className="mb-3 flex items-center gap-2 text-[15px] font-bold text-ink">
-          <ShieldCheck className="h-4 w-4 text-gold" />
-          {needsSetup ? t('setup_owner') : t('login')}
-        </h2>
-        <div className="space-y-3">
-          <Field label={t('username')} error={error}>
-            <TextInput value={username} onChange={setUsername} autoFocus ariaLabel={t('username')} />
-          </Field>
-          <Field label={t('password')}>
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && void submit()}
-            />
-          </Field>
-          {needsSetup ? (
-            <Field label={t('display_name')}>
-              <TextInput value={displayName} onChange={setDisplayName} ariaLabel={t('display_name')} />
+        <form onSubmit={submit} className="space-y-3">
+          <h2 className="text-[15px] font-bold text-ink">{mode === 'setup' ? 'Create your shop account' : 'Sign in'}</h2>
+
+          {mode === 'setup' ? (
+            <Field label="Your name">
+              <TextInput value={displayName} onChange={setDisplayName} placeholder="Shop owner" />
             </Field>
           ) : null}
-          <button className="btn-primary w-full" onClick={() => void submit()} disabled={busy || needsSetup === null}>
-            <LogIn className="h-4 w-4" />
-            {needsSetup ? t('setup_owner') : t('login')}
+
+          <Field label="Username" required>
+            <TextInput value={username} onChange={setUsername} placeholder="owner" autoFocus />
+          </Field>
+
+          <Field label="Password" required>
+            <TextInput value={password} onChange={setPassword} type="password" placeholder="••••••••" />
+          </Field>
+
+          {error ? <p className="rounded-xl bg-bad/10 px-3 py-2 text-[13px] font-semibold text-bad">{error}</p> : null}
+
+          <button type="submit" className="btn-primary w-full" disabled={busy || !username || !password}>
+            {busy ? <Spinner /> : null}
+            {mode === 'setup' ? 'Create shop' : 'Sign in'}
           </button>
-        </div>
+
+          {!needsSetup ? (
+            <p className="text-center text-[12px] text-muted">
+              Staff accounts are created by the owner in Settings.
+            </p>
+          ) : null}
+        </form>
       </Card>
     </div>
   );

@@ -1,28 +1,20 @@
-import { NextResponse } from 'next/server';
-import { getUserById, setPin, verifyPassword } from '@/lib/auth';
-import { fail, guard, ok, readJson, requireCtx } from '@/lib/api';
+import { fail, isDenied, ok, readJson, requireCtx } from '@/lib/api';
+import { getUserById, setPin, verifyPin } from '@/lib/auth';
 import { audit } from '@/lib/repo';
 import { pinSchema } from '@/lib/schemas';
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-export async function POST(req: Request): Promise<NextResponse> {
-  const limited = guard(req, 'pin', 10, 60_000);
-  if (limited) return limited;
+export async function POST(req: Request) {
   const g = await requireCtx();
-  if ('response' in g) return g.response;
+  if (isDenied(g)) return g.response;
 
   const parsed = pinSchema.safeParse(await readJson(req));
-  if (!parsed.success) return fail('invalid_input', 400);
+  if (!parsed.success) return fail('validation_failed', 422, { issues: parsed.error.issues.map((i) => i.message) });
 
   const user = await getUserById(g.ctx.userId);
-  if (!user) return fail('unauthorized', 401);
-  if (user.pinHash) {
-    const current = parsed.data.currentPin ?? '';
-    if (!verifyPassword(current, user.pinHash)) return fail('bad_pin', 403);
+  if (user?.pinHash && !(await verifyPin(g.ctx.userId, parsed.data.currentPin ?? ''))) {
+    return fail('wrong_pin', 403);
   }
-  await setPin(user.id, parsed.data.pin);
-  await audit(g.ctx, 'users', user.id, parsed.data.pin ? 'set_pin' : 'clear_pin', null, null);
+  await setPin(g.ctx.userId, parsed.data.pin);
+  await audit(g.ctx, 'users', g.ctx.userId, parsed.data.pin ? 'pin_set' : 'pin_cleared', null, null);
   return ok({ hasPin: !!parsed.data.pin });
 }

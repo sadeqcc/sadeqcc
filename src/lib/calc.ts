@@ -1,330 +1,314 @@
+/**
+ * Pure order calculations. Everything here is integer maths on fils and
+ * milligrams, so a total is reproducible and never drifts.
+ */
+import { applyBp, goldValueFils, mulDiv, sum } from './num';
+import { diffDays, dubaiDate } from './date';
 import {
-  ADJUSTMENT_EFFECT,
-  CASH_KIND_EFFECT,
-  type CashAdjustment,
-  type CashEntry,
-  type CashEntryKind,
-  type GoldMovement,
-  type GoldRow,
-  type MatchState,
+  STATUS_FLOW,
+  isClosed,
+  type OrderStatus,
+  type Urgency,
 } from './types';
-import { sum } from './num';
 
-export const ENGINE_VERSION = 'sadeq-engine-1.0.0';
+/* --------------------------------------------------------------- pricing */
 
-export interface CashLine {
-  key: string;
-  label: string;
-  sign: 1 | -1;
-  amountFils: number;
-  side: 'physical' | 'system';
-  count: number;
+export interface PricingInput {
+  expectedWeightMg: number;
+  actualWeightMg?: number | null;
+  goldRateFilsPerGram: number;
+  /** When the shop types one lump-sum gold value instead of a rate. */
+  goldValueOverrideFils?: number | null;
+  makingChargeMode: 'per_gram' | 'fixed';
+  /** Per gram, or the flat amount — same field, read according to the mode. */
+  makingChargeFils: number;
+  otherChargesFils?: number;
+  discountFils?: number;
+  vatBp?: number;
 }
 
-export interface CashResult {
-  physicalCashFils: number;
-  systemCashFils: number;
-  lines: CashLine[];
-  totals: Record<CashEntryKind, number>;
-  adjustPhysicalAdd: number;
-  adjustPhysicalSub: number;
-  adjustSystemAdd: number;
-  adjustSystemSub: number;
-  adjustedPhysicalFils: number;
-  adjustedSystemFils: number;
-  differenceFils: number;
-  state: MatchState;
-  withinTolerance: boolean;
+export interface PricingResult {
+  /** The weight the price is actually built on: actual once known, else expected. */
+  billableWeightMg: number;
+  goldValueFils: number;
+  makingFils: number;
+  otherChargesFils: number;
+  discountFils: number;
+  subtotalFils: number;
+  vatFils: number;
+  totalFils: number;
 }
 
-const KIND_LABELS: Record<CashEntryKind, string> = {
-  principal: 'principal',
-  debt: 'debts',
-  commission: 'commissions',
-  amanat: 'amanat',
-  unregistered_sale: 'unregistered_sales',
-  duplicate_sale: 'duplicate_sales',
-  system_error: 'system_errors',
+export function priceOrder(input: PricingInput): PricingResult {
+  const billableWeightMg = input.actualWeightMg ?? input.expectedWeightMg ?? 0;
+  const gold =
+    input.goldValueOverrideFils !== null && input.goldValueOverrideFils !== undefined
+      ? input.goldValueOverrideFils
+      : goldValueFils(billableWeightMg, input.goldRateFilsPerGram ?? 0);
+  const making =
+    input.makingChargeMode === 'per_gram'
+      ? mulDiv(input.makingChargeFils ?? 0, billableWeightMg, 1000)
+      : input.makingChargeFils ?? 0;
+  const other = input.otherChargesFils ?? 0;
+  const discount = input.discountFils ?? 0;
+  const subtotal = gold + making + other - discount;
+  const vat = applyBp(Math.max(subtotal, 0), input.vatBp ?? 0);
+  return {
+    billableWeightMg,
+    goldValueFils: gold,
+    makingFils: making,
+    otherChargesFils: other,
+    discountFils: discount,
+    subtotalFils: subtotal,
+    vatFils: vat,
+    totalFils: subtotal + vat,
+  };
+}
+
+/* --------------------------------------------------------------- balance */
+
+export type BalanceStatus = 'paid' | 'partial' | 'unpaid' | 'credit';
+
+export interface BalanceResult {
+  totalFils: number;
+  paymentsFils: number;
+  exchangeFils: number;
+  totalPaidFils: number;
+  /** Never negative. An overpayment surfaces as `creditFils` instead. */
+  remainingFils: number;
+  creditFils: number;
+  status: BalanceStatus;
+}
+
+export function balanceOf(
+  totalFils: number,
+  payments: { amountFils: number }[],
+  exchanges: { valueFils: number }[] = [],
+): BalanceResult {
+  const paymentsFils = sum(payments.map((p) => p.amountFils));
+  const exchangeFils = sum(exchanges.map((e) => e.valueFils));
+  const totalPaidFils = paymentsFils + exchangeFils;
+  const diff = totalFils - totalPaidFils;
+  const remainingFils = Math.max(diff, 0);
+  const creditFils = Math.max(-diff, 0);
+  let status: BalanceStatus;
+  if (creditFils > 0) status = 'credit';
+  else if (remainingFils === 0 && totalPaidFils > 0) status = 'paid';
+  else if (totalPaidFils > 0) status = 'partial';
+  else status = 'unpaid';
+  return { totalFils, paymentsFils, exchangeFils, totalPaidFils, remainingFils, creditFils, status };
+}
+
+export const BALANCE_LABEL: Record<BalanceStatus, string> = {
+  paid: 'Paid',
+  partial: 'Partially Paid',
+  unpaid: 'Not Paid',
+  credit: 'Customer Credit',
 };
 
-/**
- * Adjusted Physical = Physical + Principal + Debts + Commissions + CustomAdd
- *                     - Amanat - Unregistered Sales - CustomSub
- * Adjusted System   = System - Duplicate Sales - System Errors + CustomAdd - CustomSub
- * Difference        = Adjusted Physical - Adjusted System
- */
-export function computeCash(input: {
-  physicalCashFils: number;
-  systemCashFils: number | null;
-  entries: CashEntry[];
-  adjustments: CashAdjustment[];
-  toleranceFils?: number;
-}): CashResult {
-  const live = input.entries.filter((e) => !e.deletedAt);
-  const liveAdj = input.adjustments.filter((a) => !a.deletedAt);
+export const BALANCE_ICON: Record<BalanceStatus, string> = {
+  paid: '🟢',
+  partial: '🟡',
+  unpaid: '🔴',
+  credit: '🔵',
+};
 
-  const totals = {} as Record<CashEntryKind, number>;
-  (Object.keys(KIND_LABELS) as CashEntryKind[]).forEach((k) => {
-    totals[k] = sum(live.filter((e) => e.kind === k).map((e) => e.amountFils));
-  });
+/* ---------------------------------------------------------------- weight */
 
-  const lines: CashLine[] = (Object.keys(KIND_LABELS) as CashEntryKind[]).map((k) => ({
-    key: k,
-    label: KIND_LABELS[k],
-    sign: CASH_KIND_EFFECT[k].sign,
-    side: CASH_KIND_EFFECT[k].side,
-    amountFils: totals[k],
-    count: live.filter((e) => e.kind === k).length,
-  }));
+export type WeightVerdict = 'within' | 'slight' | 'outside';
 
-  const bucket = (dir: keyof typeof ADJUSTMENT_EFFECT) =>
-    sum(liveAdj.filter((a) => a.direction === dir).map((a) => a.amountFils));
-
-  const adjustPhysicalAdd = bucket('add_physical');
-  const adjustPhysicalSub = bucket('sub_physical');
-  const adjustSystemAdd = bucket('add_system');
-  const adjustSystemSub = bucket('sub_system');
-
-  const physicalCashFils = input.physicalCashFils;
-  const systemCashFils = input.systemCashFils ?? 0;
-
-  const adjustedPhysicalFils =
-    physicalCashFils +
-    totals.principal +
-    totals.debt +
-    totals.commission +
-    adjustPhysicalAdd -
-    totals.amanat -
-    totals.unregistered_sale -
-    adjustPhysicalSub;
-
-  const adjustedSystemFils =
-    systemCashFils - totals.duplicate_sale - totals.system_error + adjustSystemAdd - adjustSystemSub;
-
-  const differenceFils = adjustedPhysicalFils - adjustedSystemFils;
-  const tol = Math.abs(input.toleranceFils ?? 0);
-
-  return {
-    physicalCashFils,
-    systemCashFils,
-    lines,
-    totals,
-    adjustPhysicalAdd,
-    adjustPhysicalSub,
-    adjustSystemAdd,
-    adjustSystemSub,
-    adjustedPhysicalFils,
-    adjustedSystemFils,
-    differenceFils,
-    state: differenceFils === 0 ? 'matched' : differenceFils > 0 ? 'over' : 'short',
-    withinTolerance: Math.abs(differenceFils) <= tol,
-  };
-}
-
-export interface GoldKaratResult {
-  karat: string;
-  systemMg: number;
-  drawerMg: number;
-  withAshrafMg: number;
-  withPeopleMg: number;
-  withOfficesMg: number;
-  withFactoryMg: number;
-  withOtherMg: number;
-  outTotalMg: number;
-  thirdPartyMg: number;
-  accountedMg: number;
+export interface WeightResult {
   differenceMg: number;
-  state: MatchState;
-  withinTolerance: boolean;
-  toleranceMg: number;
-  movements: GoldMovement[];
-}
-
-/** Remaining (not yet returned) weight of a movement. */
-export function remainingMg(m: GoldMovement): number {
-  const rest = m.weightMg - m.returnedMg;
-  return rest > 0 ? rest : 0;
-}
-
-export function isOutstanding(m: GoldMovement): boolean {
-  return !m.deletedAt && m.status !== 'returned' && remainingMg(m) > 0;
+  verdict: WeightVerdict;
+  /** The band the piece was expected to land in, when one was set. */
+  minimumMg: number | null;
+  maximumMg: number | null;
 }
 
 /**
- * Accounted Store Gold = Drawer + Ashraf + People + Offices + Factory/Goldsmith - Third-party
- * Gold Difference      = Accounted - System        (per karat, never mixed)
+ * A difference inside the declared min/max band is "within". Outside the band
+ * but under half the tolerance again is "slight"; anything further is "outside".
  */
-export function computeGoldKarat(input: {
-  karat: string;
-  row: Pick<GoldRow, 'systemMg' | 'drawerMg'> | null;
-  movements: GoldMovement[];
-  toleranceMg?: number;
-}): GoldKaratResult {
-  const mine = input.movements.filter((m) => m.karat === input.karat && isOutstanding(m));
-  const out = mine.filter((m) => m.direction === 'out');
-  const inbound = mine.filter((m) => m.direction === 'in');
-
-  const byType = (t: string) => sum(out.filter((m) => m.holderType === t).map(remainingMg));
-
-  const withAshrafMg = byType('ashraf');
-  const withPeopleMg = byType('person');
-  const withOfficesMg = byType('office');
-  const withFactoryMg = byType('factory') + byType('goldsmith');
-  const withOtherMg = byType('other');
-  const outTotalMg = withAshrafMg + withPeopleMg + withOfficesMg + withFactoryMg + withOtherMg;
-  const thirdPartyMg = sum(inbound.map(remainingMg));
-
-  const systemMg = input.row?.systemMg ?? 0;
-  const drawerMg = input.row?.drawerMg ?? 0;
-  const accountedMg = drawerMg + outTotalMg - thirdPartyMg;
-  const differenceMg = accountedMg - systemMg;
-  const toleranceMg = Math.abs(input.toleranceMg ?? 0);
-
-  return {
-    karat: input.karat,
-    systemMg,
-    drawerMg,
-    withAshrafMg,
-    withPeopleMg,
-    withOfficesMg,
-    withFactoryMg,
-    withOtherMg,
-    outTotalMg,
-    thirdPartyMg,
-    accountedMg,
-    differenceMg,
-    state: differenceMg === 0 ? 'matched' : differenceMg > 0 ? 'over' : 'short',
-    withinTolerance: Math.abs(differenceMg) <= toleranceMg,
-    toleranceMg,
-    movements: mine,
-  };
-}
-
-export function computeGold(input: {
-  karats: string[];
-  rows: GoldRow[];
-  movements: GoldMovement[];
-  tolerances?: Record<string, number>;
-}): GoldKaratResult[] {
-  return input.karats.map((k) =>
-    computeGoldKarat({
-      karat: k,
-      row: input.rows.find((r) => r.karat === k && !r.deletedAt) ?? null,
-      movements: input.movements,
-      toleranceMg: input.tolerances?.[k] ?? 0,
-    }),
-  );
-}
-
-export interface DaySummary {
-  cash: CashResult;
-  gold: GoldKaratResult[];
-  sectionsTotal: number;
-  sectionsMatched: number;
-  allMatched: boolean;
-  hasDifferences: boolean;
-  touched: boolean;
-}
-
-export function summarizeDay(input: {
-  physicalCashFils: number;
-  systemCashFils: number | null;
-  entries: CashEntry[];
-  adjustments: CashAdjustment[];
-  karats: string[];
-  goldRows: GoldRow[];
-  movements: GoldMovement[];
-  tolerances?: Record<string, number>;
-  cashTolerance?: number;
-}): DaySummary {
-  const cash = computeCash({
-    physicalCashFils: input.physicalCashFils,
-    systemCashFils: input.systemCashFils,
-    entries: input.entries,
-    adjustments: input.adjustments,
-    toleranceFils: input.cashTolerance,
-  });
-  const gold = computeGold({
-    karats: input.karats,
-    rows: input.goldRows,
-    movements: input.movements,
-    tolerances: input.tolerances,
-  });
-
-  const sections = [cash.state === 'matched' || cash.withinTolerance, ...gold.map((g) => g.state === 'matched' || g.withinTolerance)];
-  const sectionsMatched = sections.filter(Boolean).length;
-  const touched =
-    input.systemCashFils !== null ||
-    input.physicalCashFils !== 0 ||
-    input.entries.some((e) => !e.deletedAt) ||
-    input.adjustments.some((a) => !a.deletedAt) ||
-    input.goldRows.some((r) => !r.deletedAt && (r.systemMg !== 0 || r.drawerMg !== 0));
-
-  return {
-    cash,
-    gold,
-    sectionsTotal: sections.length,
-    sectionsMatched,
-    allMatched: sectionsMatched === sections.length,
-    hasDifferences: sections.some((s) => !s),
-    touched,
-  };
-}
-
-/** Non-destructive hints. These never mutate data — the user decides. */
-export interface Suggestion {
-  key: string;
-  scope: 'cash' | 'gold';
-  karat?: string;
-  amountFils?: number;
-  weightMg?: number;
-  refId?: string;
-}
-
-export function suggestForDifference(input: {
-  cash: CashResult;
-  gold: GoldKaratResult[];
-  movements: GoldMovement[];
-  entries: CashEntry[];
-}): Suggestion[] {
-  const out: Suggestion[] = [];
-  const d = input.cash.differenceFils;
-
-  if (d > 0) {
-    out.push({ key: 'maybe_unregistered_sale', scope: 'cash', amountFils: d });
-    out.push({ key: 'maybe_deposit_not_deducted', scope: 'cash', amountFils: d });
-  } else if (d < 0) {
-    out.push({ key: 'maybe_duplicate_entry', scope: 'cash', amountFils: -d });
-    out.push({ key: 'maybe_counting_mistake', scope: 'cash', amountFils: -d });
-  }
-
-  // A recorded entry whose amount equals the difference is a strong hint.
-  if (d !== 0) {
-    const target = Math.abs(d);
-    const hit = input.entries.find((e) => !e.deletedAt && e.amountFils === target);
-    if (hit) out.push({ key: 'similar_entry_value', scope: 'cash', amountFils: target, refId: hit.id });
-  }
-
-  for (const g of input.gold) {
-    if (g.differenceMg === 0) continue;
-    if (g.differenceMg < 0) {
-      if (g.karat === '21K' && g.withAshrafMg === 0) out.push({ key: 'maybe_missing_ashraf', scope: 'gold', karat: g.karat, weightMg: -g.differenceMg });
-      out.push({ key: 'maybe_gold_with_person', scope: 'gold', karat: g.karat, weightMg: -g.differenceMg });
-    } else {
-      out.push({ key: 'maybe_borrowed_gold', scope: 'gold', karat: g.karat, weightMg: g.differenceMg });
+export function compareWeight(
+  expectedMg: number,
+  actualMg: number,
+  bounds: { minimumMg?: number | null; maximumMg?: number | null; toleranceMg?: number } = {},
+): WeightResult {
+  const differenceMg = actualMg - expectedMg;
+  const tol = bounds.toleranceMg ?? 0;
+  const min = bounds.minimumMg ?? (tol ? expectedMg - tol : null);
+  const max = bounds.maximumMg ?? (tol ? expectedMg + tol : null);
+  let verdict: WeightVerdict = 'within';
+  if (min !== null && max !== null) {
+    if (actualMg < min || actualMg > max) {
+      const band = Math.max(max - min, 0);
+      const overshoot = actualMg < min ? min - actualMg : actualMg - max;
+      verdict = overshoot <= Math.max(band / 2, 500) ? 'slight' : 'outside';
     }
-    const target = Math.abs(g.differenceMg);
-    const hit = input.movements.find((m) => m.karat === g.karat && !m.deletedAt && remainingMg(m) === target);
-    if (hit) out.push({ key: 'similar_movement_value', scope: 'gold', karat: g.karat, weightMg: target, refId: hit.id });
-    if (target > 0 && target < 10) out.push({ key: 'maybe_precision', scope: 'gold', karat: g.karat, weightMg: target });
+  } else if (differenceMg !== 0) {
+    verdict = Math.abs(differenceMg) <= 500 ? 'within' : Math.abs(differenceMg) <= 2000 ? 'slight' : 'outside';
+  }
+  return { differenceMg, verdict, minimumMg: min, maximumMg: max };
+}
+
+export const WEIGHT_VERDICT_LABEL: Record<WeightVerdict, string> = {
+  within: 'Within Tolerance',
+  slight: 'Slight Difference',
+  outside: 'Outside Expected Range',
+};
+
+/* -------------------------------------------------------------- urgency */
+
+export interface UrgencyResult {
+  urgency: Urgency;
+  daysLate: number;
+  daysRemaining: number | null;
+  isOverdue: boolean;
+  /** Lower sorts first. Overdue orders can never fall below an active one. */
+  priority: number;
+}
+
+/**
+ * Overdue means: the expected delivery date has passed in Dubai and the order
+ * is neither delivered nor cancelled. Nothing about this is manual.
+ */
+export function urgencyOf(
+  status: OrderStatus,
+  expectedDeliveryDate: string | null,
+  today: string = dubaiDate(),
+): UrgencyResult {
+  if (status === 'delivered') return { urgency: 'delivered', daysLate: 0, daysRemaining: null, isOverdue: false, priority: 800 };
+  if (status === 'cancelled') return { urgency: 'cancelled', daysLate: 0, daysRemaining: null, isOverdue: false, priority: 900 };
+  if (!expectedDeliveryDate) return { urgency: 'no_date', daysLate: 0, daysRemaining: null, isOverdue: false, priority: 600 };
+
+  const remaining = diffDays(expectedDeliveryDate, today);
+  const late = remaining < 0 ? -remaining : 0;
+
+  if (late > 7) return { urgency: 'critical', daysLate: late, daysRemaining: remaining, isOverdue: true, priority: 0 };
+  if (late >= 3) return { urgency: 'high', daysLate: late, daysRemaining: remaining, isOverdue: true, priority: 100 };
+  if (late >= 1) return { urgency: 'late', daysLate: late, daysRemaining: remaining, isOverdue: true, priority: 200 };
+  if (remaining === 0) return { urgency: 'due_today', daysLate: 0, daysRemaining: 0, isOverdue: false, priority: 300 };
+  if (remaining === 1) return { urgency: 'due_tomorrow', daysLate: 0, daysRemaining: 1, isOverdue: false, priority: 400 };
+  return { urgency: 'upcoming', daysLate: 0, daysRemaining: remaining, isOverdue: false, priority: 500 };
+}
+
+/**
+ * Default list order: urgency band first, then the soonest delivery date, then
+ * the newest order. Overdue work stays pinned at the top until it closes.
+ */
+export function comparePriority(
+  a: { priority: number; expectedDeliveryDate: string | null; createdAt: string },
+  b: { priority: number; expectedDeliveryDate: string | null; createdAt: string },
+): number {
+  if (a.priority !== b.priority) return a.priority - b.priority;
+  const ad = a.expectedDeliveryDate ?? '9999-12-31';
+  const bd = b.expectedDeliveryDate ?? '9999-12-31';
+  if (ad !== bd) return ad < bd ? -1 : 1;
+  return a.createdAt < b.createdAt ? 1 : -1;
+}
+
+/* -------------------------------------------------------------- progress */
+
+export function progressPercent(status: OrderStatus): number {
+  if (status === 'cancelled') return 0;
+  const i = STATUS_FLOW.indexOf(status);
+  if (i < 0) return 0;
+  return Math.round(((i + 1) / STATUS_FLOW.length) * 100);
+}
+
+export function nextStatus(status: OrderStatus): OrderStatus | null {
+  const i = STATUS_FLOW.indexOf(status);
+  if (i < 0 || i === STATUS_FLOW.length - 1) return null;
+  return STATUS_FLOW[i + 1];
+}
+
+/** Which moves the UI offers. Going back to the maker after Ready is allowed. */
+export function allowedTransitions(status: OrderStatus): OrderStatus[] {
+  if (status === 'delivered') return [];
+  if (status === 'cancelled') return ['ordered'];
+  const forward = STATUS_FLOW.filter((s) => s !== status);
+  return [...forward, 'cancelled'];
+}
+
+/* -------------------------------------------------------------- warnings */
+
+export interface OrderWarning {
+  code: string;
+  text: string;
+  severity: 'high' | 'medium' | 'low';
+}
+
+export interface WarningInput {
+  status: OrderStatus;
+  expectedDeliveryDate: string | null;
+  expectedReadyDate: string | null;
+  actualWeightMg: number | null;
+  expectedWeightMg: number;
+  weightVerdict: WeightVerdict | null;
+  remainingFils: number;
+  coverMediaId: string | null;
+  mediaCount: number;
+  departureDate: string | null;
+  today?: string;
+}
+
+export function warningsFor(o: WarningInput): OrderWarning[] {
+  const today = o.today ?? dubaiDate();
+  const out: OrderWarning[] = [];
+  const open = !isClosed(o.status);
+
+  if (open && !o.expectedDeliveryDate) {
+    out.push({ code: 'no_delivery_date', text: 'Order has no expected delivery date.', severity: 'medium' });
+  }
+  if (open && o.expectedDeliveryDate && diffDays(o.expectedDeliveryDate, today) < 0) {
+    out.push({ code: 'past_due', text: 'Expected delivery date has passed.', severity: 'high' });
+  }
+  if (o.status === 'maker' && o.expectedReadyDate && diffDays(o.expectedReadyDate, today) < 0) {
+    out.push({ code: 'maker_late', text: 'Maker deadline has passed.', severity: 'high' });
+  }
+  if (o.status === 'traveler' && o.departureDate && diffDays(o.departureDate, today) < 0) {
+    out.push({ code: 'traveler_departed', text: 'Traveler departure date passed but the order is still marked Traveler.', severity: 'high' });
+  }
+  if (o.weightVerdict === 'outside') {
+    out.push({ code: 'weight_off', text: 'Actual weight differs significantly from the expected weight.', severity: 'high' });
+  }
+  if (o.remainingFils > 0 && o.status === 'delivered') {
+    out.push({ code: 'delivered_unpaid', text: 'Order was delivered with a balance still outstanding.', severity: 'high' });
+  } else if (o.remainingFils > 0 && open) {
+    out.push({ code: 'balance_due', text: 'Customer still has an unpaid balance.', severity: 'medium' });
+  }
+  if (!o.coverMediaId && o.mediaCount === 0) {
+    out.push({ code: 'no_photo', text: 'Order has no product photo.', severity: 'low' });
   }
   return out;
 }
 
-/** Derive the working status of a day from its data (finalized/locked always win). */
-export function deriveStatus(current: string, s: DaySummary): string {
-  if (current === 'finalized' || current === 'locked') return current;
-  if (!s.touched) return 'not_started';
-  if (s.allMatched) return 'matched';
-  return 'has_differences';
+/* ------------------------------------------------------------- duplicates */
+
+export interface DuplicateCandidate {
+  id: string;
+  orderNumber: string;
+  customerId: string;
+  productName: string;
+  expectedWeightMg: number;
+  orderDate: string;
+}
+
+/**
+ * Warns only — creation is never blocked. Same customer, near-identical product
+ * name, weight within 5 g, and ordered within the last 14 days.
+ */
+export function findDuplicates(
+  candidate: { customerId: string; productName: string; expectedWeightMg: number; orderDate: string },
+  existing: DuplicateCandidate[],
+): DuplicateCandidate[] {
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+  const name = norm(candidate.productName);
+  return existing.filter(
+    (o) =>
+      o.customerId === candidate.customerId &&
+      norm(o.productName) === name &&
+      Math.abs(o.expectedWeightMg - candidate.expectedWeightMg) <= 5000 &&
+      Math.abs(diffDays(candidate.orderDate, o.orderDate)) <= 14,
+  );
 }
